@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Dropdown, Avatar, Typography } from 'antd';
+import { Layout as AntLayout, Menu, Button, Dropdown, Avatar, Typography, Space, Tag } from 'antd';
 import {
   DashboardOutlined,
   TeamOutlined,
@@ -12,11 +12,13 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  HomeOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons';
 import useAuthStore from '../contexts/authStore';
 
 const { Header, Sider, Content } = AntLayout;
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const Layout = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -24,20 +26,48 @@ const Layout = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
 
-  const menuItems = [
+  // Public menu items (available to everyone)
+  const publicMenuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
-    { key: '/teachers', icon: <TeamOutlined />, label: 'Teachers' },
-    { key: '/programs', icon: <BookOutlined />, label: 'Programs' },
-    { key: '/subjects', icon: <ReadOutlined />, label: 'Subjects' },
-    { key: '/classes', icon: <ScheduleOutlined />, label: 'Classes' },
-    { key: '/routine', icon: <CalendarOutlined />, label: 'Routine' },
+    { key: '/routine', icon: <CalendarOutlined />, label: 'Class Routine' },
+    { key: '/teacher-schedule', icon: <UserOutlined />, label: 'Teacher Schedule' },
+    { key: '/teacher-routine', icon: <TeamOutlined />, label: 'Teacher Routine' },
+    { key: '/routine-grid-demo', icon: <CalendarOutlined />, label: '📋 Routine Grid Demo' },
   ];
 
+  // Admin-only menu items
+  const adminMenuItems = [
+    { type: 'divider' },
+    { 
+      key: 'admin-section', 
+      label: 'Admin Panel', 
+      type: 'group',
+      style: { color: '#1890ff', fontWeight: 'bold' }
+    },
+    { key: '/teachers', icon: <TeamOutlined />, label: 'Manage Teachers' },
+    { key: '/programs', icon: <BookOutlined />, label: 'Manage Programs' },
+    { key: '/subjects', icon: <ReadOutlined />, label: 'Manage Subjects' },
+    { key: '/classes', icon: <ScheduleOutlined />, label: 'Manage Classes' },
+    { key: '/rooms', icon: <HomeOutlined />, label: 'Manage Rooms' },
+    { key: '/timeslots', icon: <ClockCircleOutlined />, label: 'Manage Time Slots' },
+  ];
+
+  // Combine menu items based on user role
+  let menuItems = [...publicMenuItems];
+  
+  if (user?.role === 'admin') {
+    menuItems = [...publicMenuItems, ...adminMenuItems];
+  }
+
+  // Add login button if not logged in
   if (!user) {
     menuItems.push({
+      type: 'divider'
+    }, {
       key: '/admin/login',
       icon: <UserOutlined />,
       label: 'Admin Login',
+      style: { backgroundColor: '#f0f9ff', color: '#1890ff' }
     });
   }
 
@@ -133,6 +163,11 @@ const Layout = () => {
             />
             <Title level={3} style={{ margin: '0 0 0 16px', color: '#262626', whiteSpace: 'nowrap' }}>
               {menuItems.find(item => item.key === location.pathname)?.label || 'BE Routine Management'}
+              {user?.role === 'admin' && (
+                <Tag color="blue" style={{ marginLeft: '12px', fontSize: '12px' }}>
+                  Admin Mode
+                </Tag>
+              )}
             </Title>
           </div>
           {user ? (

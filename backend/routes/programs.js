@@ -22,7 +22,7 @@ const { check } = require('express-validator');
  *               - name
  *               - code
  *               - department
- *               - duration
+ *               - semesters
  *             properties:
  *               name:
  *                 type: string
@@ -30,7 +30,7 @@ const { check } = require('express-validator');
  *                 type: string
  *               department:
  *                 type: string
- *               duration:
+ *               semesters:
  *                 type: number
  *     responses:
  *       201:
@@ -46,7 +46,7 @@ router.post(
     check('name', 'Name is required').not().isEmpty(),
     check('code', 'Code is required').not().isEmpty(),
     check('department', 'Department is required').not().isEmpty(),
-    check('duration', 'Duration is required').isNumeric(),
+    check('semesters', 'Semesters is required').isNumeric(),
   ],
   createProgram
 );
@@ -114,7 +114,7 @@ router.get('/:id', getProgramById);
  *                 type: string
  *               department:
  *                 type: string
- *               duration:
+ *               semesters:
  *                 type: number
  *     responses:
  *       200:

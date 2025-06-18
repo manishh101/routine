@@ -46,10 +46,11 @@ app.use('/api/teachers', require('./routes/teachers'));
 app.use('/api/programs', require('./routes/programs'));
 app.use('/api/subjects', require('./routes/subjects'));
 app.use('/api/classes', require('./routes/classes'));
-app.use('/api/sync', require('./routes/sync'));
-app.use('/api/routine', require('./routes/routine'));
-app.use('/api/data', require('./routes/data'));
-app.use('/api/sample', require('./routes/sample'));
+app.use('/api/rooms', require('./routes/rooms'));
+app.use('/api/timeslots', require('./routes/timeslots'));
+app.use('/api/schedules', require('./routes/schedules'));
+app.use('/api/routines', require('./routes/routine'));
+app.use('/api/program-semesters', require('./routes/programSemesters'));
 
 // Base route
 app.get('/', (req, res) => {

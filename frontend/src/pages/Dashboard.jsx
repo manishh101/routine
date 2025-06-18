@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
 import { 
-  Card, 
   Row, 
   Col, 
   Typography, 
@@ -12,7 +11,7 @@ import {
   Alert,
   Avatar,
   Tag,
-  Empty
+  Card
 } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -22,15 +21,20 @@ import {
   ScheduleOutlined,
   EyeOutlined,
   DashboardFilled,
-  CalendarOutlined
+  CalendarOutlined,
+  UserOutlined,
+  SearchOutlined
 } from '@ant-design/icons';
-import { teachersAPI, programsAPI, subjectsAPI, classesAPI } from '../services/api';
+import { teachersAPI, programsAPI, subjectsAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import useAuthStore from '../contexts/authStore';
 
 const { Title, Text, Paragraph } = Typography;
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
 
   // Memoize the fetch functions to prevent infinite re-renders
   const fetchTeachers = useCallback(async () => {
@@ -45,11 +49,6 @@ const Dashboard = () => {
 
   const fetchSubjects = useCallback(async () => {
     const response = await subjectsAPI.getSubjects();
-    return response.data || [];
-  }, []);
-
-  const fetchClasses = useCallback(async () => {
-    const response = await classesAPI.getClasses();
     return response.data || [];
   }, []);
 
@@ -76,55 +75,62 @@ const Dashboard = () => {
     refetchOnMount: false,
     refetchOnWindowFocus: false
   });
-  
-  const classesQuery = useQuery({ 
-    queryKey: ['classes_dashboard'], 
-    queryFn: fetchClasses,
-    staleTime: 5 * 60 * 1000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false
-  });
 
   const teachers = teachersQuery.data || [];
   const programs = programsQuery.data || [];
   const subjects = subjectsQuery.data || [];
-  const classes = classesQuery.data || [];
 
-  const isLoading = teachersQuery.isLoading || programsQuery.isLoading || subjectsQuery.isLoading || classesQuery.isLoading;
-  const isFetching = teachersQuery.isFetching || programsQuery.isFetching || subjectsQuery.isFetching || classesQuery.isFetching;
+  const isLoading = teachersQuery.isLoading || programsQuery.isLoading || subjectsQuery.isLoading;
+  const isFetching = teachersQuery.isFetching || programsQuery.isFetching || subjectsQuery.isFetching;
 
-  const hasError = teachersQuery.isError || programsQuery.isError || subjectsQuery.isError || classesQuery.isError;
+  const hasError = teachersQuery.isError || programsQuery.isError || subjectsQuery.isError;
   const errorMessages = [
     teachersQuery.error?.message,
     programsQuery.error?.message,
-    subjectsQuery.error?.message,
-    classesQuery.error?.message
+    subjectsQuery.error?.message
   ].filter(Boolean).join(', ');
 
+  // Stats cards are shown to all users
   const stats = [
-    { title: 'Total Teachers', value: teachers.length, icon: <TeamOutlined />, color: '#1677ff', path: '/teachers' },
-    { title: 'Total Programs', value: programs.length, icon: <BookOutlined />, color: '#52c41a', path: '/programs' },
-    { title: 'Total Subjects', value: subjects.length, icon: <ReadOutlined />, color: '#722ed1', path: '/subjects' },
-    { title: 'Total Classes', value: classes.length, icon: <ScheduleOutlined />, color: '#fa8c16', path: '/classes' }
+    { title: 'Total Teachers', value: teachers.length, icon: <TeamOutlined />, color: '#1677ff', path: isAdmin ? '/admin/teachers' : '/teacher-schedule' },
+    { title: 'Total Programs', value: programs.length, icon: <BookOutlined />, color: '#52c41a', path: isAdmin ? '/admin/programs' : '' },
+    { title: 'Total Subjects', value: subjects.length, icon: <ReadOutlined />, color: '#722ed1', path: isAdmin ? '/admin/subjects' : '' }
   ];
 
-  const quickActions = [
-    { title: 'Manage Teachers', description: 'View, add, or edit faculty members', icon: <TeamOutlined />, path: '/teachers', color: '#1677ff' },
-    { title: 'Manage Programs', description: 'Define and update academic programs', icon: <BookOutlined />, path: '/programs', color: '#52c41a' },
-    { title: 'Manage Subjects', description: 'Organize course subjects and details', icon: <ReadOutlined />, path: '/subjects', color: '#722ed1' },
-    { title: 'Manage Classes', description: 'Schedule and oversee class timetables', icon: <ScheduleOutlined />, path: '/classes', color: '#fa8c16' },
-    { title: 'View Full Routine', description: 'Check the complete class schedule grid', icon: <CalendarOutlined />, path: '/routine', color: '#eb2f96' }
+  // Different quick actions based on user role
+  const adminQuickActions = [
+    { title: 'Manage Teachers', description: 'View, add, or edit faculty members', icon: <TeamOutlined />, path: '/admin/teachers', color: '#1677ff' },
+    { title: 'Manage Programs', description: 'Define and update academic programs', icon: <BookOutlined />, path: '/admin/programs', color: '#52c41a' },
+    { title: 'Manage Subjects', description: 'Organize course subjects and details', icon: <ReadOutlined />, path: '/admin/subjects', color: '#722ed1' },
+    { title: 'View Routine', description: 'Check the complete class schedule grid', icon: <CalendarOutlined />, path: '/routine', color: '#eb2f96' }
   ];
 
-  const recentClasses = classes
-    .slice() // Create a shallow copy to avoid mutating original data
-    .sort((a, b) => {
-      // Assuming classes have a createdAt or similar timestamp for "recent"
-      // If not, this sort won't be meaningful for "recent"
-      // For now, let's just take the first few as an example
-      return (b.createdAt || 0) - (a.createdAt || 0); 
-    })
-    .slice(0, 5);
+  const userQuickActions = [
+    { title: 'View Class Routine', description: 'Check class schedules and timetables', icon: <CalendarOutlined />, path: '/routine', color: '#1677ff' },
+    { title: 'Teacher Schedules', description: 'View faculty teaching timetables', icon: <TeamOutlined />, path: '/teacher-schedule', color: '#52c41a' },
+    { title: 'My Profile', description: 'Update your account information', icon: <UserOutlined />, path: '/profile', color: '#722ed1' }
+  ];
+  
+  // Use appropriate quick actions based on user role
+  const quickActions = isAdmin ? adminQuickActions : userQuickActions;
+
+  // Different getting started guides based on user role
+  const adminGettingStarted = [
+    { title: 'Set up Programs', description: 'Define your academic programs and semesters' },
+    { title: 'Add Teachers', description: 'Register faculty members and their schedules' },
+    { title: 'Create Subjects', description: 'Add course subjects and their details' },
+    { title: 'Build Routines', description: 'Generate class schedules and timetables' }
+  ];
+
+  const userGettingStarted = [
+    { title: 'Find your Routine', description: 'Select your program, semester and section' },
+    { title: 'Check Teacher Schedules', description: 'View availability of instructors' },
+    { title: 'Understand the Schedule', description: 'Learn how to read the class routine grid' },
+    { title: 'Stay Updated', description: 'Check routines regularly for any changes' }
+  ];
+
+  // Use appropriate getting started guide based on user role
+  const gettingStarted = isAdmin ? adminGettingStarted : userGettingStarted;
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -156,10 +162,10 @@ const Dashboard = () => {
       {/* Statistics Cards */}
       <Row gutter={[24, 24]}>
         {stats.map((stat) => (
-          <Col xs={24} sm={12} lg={6} key={stat.title}>
+          <Col xs={24} sm={12} lg={8} key={stat.title}>
             <Card
-              hoverable
-              onClick={() => navigate(stat.path)}
+              hoverable={!!stat.path}
+              onClick={() => stat.path && navigate(stat.path)}
               style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)'}}
               styles={{ body: { padding: '20px' } }}
             >
@@ -212,50 +218,33 @@ const Dashboard = () => {
           </Card>
         </Col>
 
-        {/* Recent Classes */}
+        {/* Getting Started Guide */}
         <Col xs={24} lg={12}>
           <Card 
-            title={<Text strong>Recently Added Classes</Text>}
+            title={<Text strong>Getting Started</Text>}
             style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', height: '100%' }}
             styles={{ body: { padding: '0 16px 16px 16px' } }}
-            extra={
-              <Button type="link" onClick={() => navigate('/routine')} icon={<EyeOutlined />}>
-                View Full Routine
-              </Button>
-            }
           >
-            {isLoading ? (
-              <div style={{ textAlign: 'center', padding: '40px' }}><Spin size="large" /></div>
-            ) : recentClasses.length > 0 ? (
-              <List
-                itemLayout="horizontal"
-                dataSource={recentClasses}
-                renderItem={(classItem) => (
-                  <List.Item style={{padding: '12px 0'}}>
-                    <List.Item.Meta
-                      avatar={
-                        <Avatar 
-                          size={40} 
-                          icon={<ScheduleOutlined />}
-                          style={{ backgroundColor: '#e6f7ff', color: '#1677ff' }}
-                        />
-                      }
-                      title={<Text strong>{classItem.subjectId?.name || classItem.subject || 'N/A'}</Text>}
-                      description={
-                        <Text type="secondary" style={{fontSize: '13px'}}>
-                          {classItem.teacherId?.teacherName || classItem.teacher || 'N/A'} • {classItem.day || 'N/A'} • {classItem.startTime || '--'}:{classItem.endTime || '--'}
-                        </Text>
-                      }
-                    />
-                    <Tag color="blue">Room {classItem.roomNumber || 'N/A'}</Tag>
-                  </List.Item>
-                )}
-              />
-            ) : (
-              <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                <Empty description="No recent classes found." image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              </div>
-            )}
+            <List
+              itemLayout="horizontal"
+              dataSource={gettingStarted}
+              renderItem={(item, index) => (
+                <List.Item style={{padding: '12px 0'}}>
+                  <List.Item.Meta
+                    avatar={
+                      <Avatar 
+                        size={32} 
+                        style={{ backgroundColor: '#f0f0f0', color: '#666' }}
+                      >
+                        {index + 1}
+                      </Avatar>
+                    }
+                    title={<Text strong style={{fontSize: '14px'}}>{item.title}</Text>}
+                    description={<Text type="secondary" style={{fontSize: '13px'}}>{item.description}</Text>}
+                  />
+                </List.Item>
+              )}
+            />
           </Card>
         </Col>
       </Row>

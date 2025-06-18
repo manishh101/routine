@@ -9,33 +9,38 @@ const SubjectSchema = new mongoose.Schema(
     code: {
       type: String,
       required: true,
-      unique: true,
+      unique: true, // Globally unique subject code
+      uppercase: true,
+      trim: true
     },
-    programId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Program',
-      required: true,
+    description: {
+      type: String,
+      trim: true
     },
-    semester: {
+    credits: {
       type: Number,
       required: true,
+      min: 1,
+      default: 3
     },
-    creditHours: {
-      type: Number,
-      required: true,
+    defaultClassType: {
+      type: String,
+      enum: ['L', 'P', 'T'],
+      default: 'L'
     },
-    lectureHoursPerWeek: {
-      type: Number,
-      required: true,
-    },
-    practicalHoursPerWeek: {
-      type: Number,
-      default: 0,
-    },
+    isActive: {
+      type: Boolean,
+      default: true
+    }
   },
   {
     timestamps: true,
   }
 );
+
+// Indexes as per MD specification
+// Note: code index is handled by unique: true in field definition
+SubjectSchema.index({ name: 1 });
+SubjectSchema.index({ isActive: 1 });
 
 module.exports = mongoose.model('Subject', SubjectSchema);

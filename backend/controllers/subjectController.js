@@ -28,7 +28,7 @@ exports.createSubject = async (req, res) => {
 // @access  Private
 exports.getSubjects = async (req, res) => {
   try {
-    const subjects = await Subject.find().populate('programId', 'name code');
+    const subjects = await Subject.find();
     res.json(subjects);
   } catch (err) {
     console.error(err.message);

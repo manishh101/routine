@@ -7,7 +7,8 @@ const {
   updateClass, 
   deleteClass,
   getClassesByTeacherId,
-  getClassesByProgramAndSemester
+  getClassesByProgramAndSemester,
+  getClassesByProgramSemesterAndSection
 } = require('../controllers/classController');
 const { protect, authorize } = require('../middleware/auth');
 const { check } = require('express-validator');
@@ -137,6 +138,36 @@ router.get('/teacher/:teacherId', getClassesByTeacherId);
  *         description: List of classes for a program and semester
  */
 router.get('/program/:programId/semester/:semester', getClassesByProgramAndSemester);
+
+/**
+ * @swagger
+ * /api/classes/program/{programId}/semester/{semester}/section/{section}:
+ *   get:
+ *     summary: Get classes by program ID, semester, and section
+ *     tags: [Classes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: programId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: semester
+ *         required: true
+ *         schema:
+ *           type: number
+ *       - in: path
+ *         name: section
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of classes for a program, semester, and section
+ */
+router.get('/program/:programId/semester/:semester/section/:section', getClassesByProgramSemesterAndSection);
 
 /**
  * @swagger

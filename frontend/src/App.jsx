@@ -7,19 +7,26 @@ import useAuthStore from './contexts/authStore';
 // Import components
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Teachers from './pages/Teachers';
-import Programs from './pages/Programs';
-import Subjects from './pages/Subjects';
-import Classes from './pages/Classes';
 import Routine from './pages/Routine';
+import TeacherSchedule from './pages/TeacherSchedule';
+import TeacherRoutinePage from './pages/TeacherRoutinePage';
+import RoutineGridDemo from './pages/RoutineGridDemo';
 import Layout from './components/Layout';
-import DebugPage from './pages/DebugPage';
+import ProtectedRoute from './components/ProtectedRoute';
+
+// Import admin pages
+import Teachers from './pages/admin/Teachers';
+import Programs from './pages/admin/Programs';
+import Subjects from './pages/admin/Subjects';
+import Classes from './pages/admin/Classes';
+import RoomManagement from './pages/admin/RoomManagement';
+import TimeSlotManagement from './pages/admin/TimeSlotManagement';
 
 // Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 0, // No retries to prevent excessive API calls
+      retry: 1, // Allow one retry on API failures
       retryDelay: 1000,
       refetchOnWindowFocus: false,
       refetchOnMount: false, // Don't refetch on mount
@@ -29,6 +36,8 @@ const queryClient = new QueryClient({
       suspense: false,
       onError: (err) => {
         console.error('Query error:', err);
+        // Don't throw app-level errors that could cause routing issues
+        return false;
       }
     },
   },
@@ -61,12 +70,62 @@ function App() {
               >
                 <Route index element={<Navigate to="/dashboard" />} />
                 <Route path="dashboard" element={<Dashboard />} />
-                <Route path="teachers" element={<Teachers />} />
-                <Route path="programs" element={<Programs />} />
-                <Route path="subjects" element={<Subjects />} />
-                <Route path="classes" element={<Classes />} />
+                
+                {/* Public Routes - No authentication required */}
                 <Route path="routine" element={<Routine />} />
-                <Route path="debug" element={<DebugPage />} />
+                <Route path="teacher-schedule" element={<TeacherSchedule />} />
+                <Route path="teacher-routine" element={<TeacherRoutinePage />} />
+                <Route path="routine-grid-demo" element={<RoutineGridDemo />} />
+                
+                {/* Admin Protected Routes - Require admin login */}
+                <Route 
+                  path="teachers" 
+                  element={
+                    <ProtectedRoute requireAdmin={true}>
+                      <Teachers />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="programs" 
+                  element={
+                    <ProtectedRoute requireAdmin={true}>
+                      <Programs />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="subjects" 
+                  element={
+                    <ProtectedRoute requireAdmin={true}>
+                      <Subjects />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="classes" 
+                  element={
+                    <ProtectedRoute requireAdmin={true}>
+                      <Classes />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="rooms" 
+                  element={
+                    <ProtectedRoute requireAdmin={true}>
+                      <RoomManagement />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="timeslots" 
+                  element={
+                    <ProtectedRoute requireAdmin={true}>
+                      <TimeSlotManagement />
+                    </ProtectedRoute>
+                  } 
+                />
               </Route>
             </Routes>
           </div>

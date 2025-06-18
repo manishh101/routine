@@ -5,21 +5,32 @@ const ProgramSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-      unique: true,
+      trim: true
     },
     code: {
       type: String,
       required: true,
       unique: true,
+      uppercase: true,
+      trim: true
+    },
+    totalSemesters: {
+      type: Number,
+      required: true,
+      default: 8
+    },
+    description: {
+      type: String,
+      trim: true
     },
     department: {
       type: String,
-      required: true,
+      trim: true
     },
-    duration: {
-      type: Number, // In semesters
-      required: true,
-    },
+    isActive: {
+      type: Boolean,
+      default: true
+    }
   },
   {
     timestamps: true,

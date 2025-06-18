@@ -43,6 +43,11 @@ const ClassSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    section: {
+      type: String,
+      enum: ['AB', 'CD'],
+      required: false,
+    },
   },
   {
     timestamps: true,
