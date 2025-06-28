@@ -65,7 +65,8 @@ This document outlines the design for an advanced Class Routine Management Syste
             *   **Room Availability:** Is the selected room already booked for another class at this day/time?
         *   If a collision is detected, the backend returns an error message detailing the conflict. The frontend displays this to the admin.
         *   If no collisions, the class is saved to the program routine.
-    *   **Teacher Routine Update:** After successful save, trigger update/regeneration of affected teachers' individual routines.
+        *   After successful save, the backend identifies affected teachers (both old and new) and publishes a message to the RabbitMQ queue.
+    *   **Teacher Routine Update:** After successful save, identify affected teachers and publish a message to the RabbitMQ queue with the `affectedTeacherIds`. A separate worker service will process the queue and update the teacher schedules.
 *   **Data Fetching (`@tanstack/react-query`):**
     *   Programs, Semesters, Sections.
     *   Subjects, Teachers, Rooms (for modal dropdowns).
@@ -108,8 +109,55 @@ Refer to `TEACHER_ROUTINE.md` for how individual teacher routines are generated 
 
 ## 8. Future Enhancements
 
-*   Batch routine import/export.
-*   Automatic suggestion of available teachers/rooms.
-*   Advanced constraint rules (e.g., max teaching hours per teacher per day/week).
-*   Visual representation of teacher/room load during scheduling.
+### 8.1. Phase 1 Enhancements (High Priority)
+*   **Teacher Workload Management:**
+    *   Maximum classes per day/week validation
+    *   Consecutive class limits enforcement
+    *   Workload balancing recommendations
+*   **Smart Teacher Suggestions:**
+    *   Availability-based filtering
+    *   Subject expertise matching
+    *   Workload-based prioritization
+*   **Visual Load Indicators:**
+    *   Real-time workload visualization in assignment modals
+    *   Teacher workload status indicators (light/moderate/heavy)
+    *   Weekly workload progress bars
+
+### 8.2. Phase 2 Enhancements (Medium Priority)
+*   **Advanced Analytics Dashboard:**
+    *   Teacher workload distribution charts
+    *   Room utilization analytics
+    *   Scheduling efficiency metrics
+*   **Batch Operations:**
+    *   Excel template-based routine import/export
+    *   Bulk teacher assignment operations
+    *   Mass schedule modifications
+*   **Enhanced Constraint Engine:**
+    *   Configurable business rules
+    *   Subject-specific constraints (lab requirements, theory prerequisites)
+    *   Time preference management
+
+### 8.3. Phase 3 Enhancements (Future Considerations)
+*   **AI-Powered Auto-Scheduling:**
+    *   Machine learning-based schedule optimization
+    *   Automated conflict resolution suggestions
+    *   Predictive scheduling recommendations
+*   **Advanced User Features:**
+    *   Teacher preference management system
+    *   Student schedule conflict detection
+    *   Mobile-responsive interface
+*   **Integration Capabilities:**
+    *   University management system integration
+    *   Calendar system synchronization
+    *   Notification and alert system
+
+### 8.4. Technical Improvements
+*   **Performance Optimization:**
+    *   Database query optimization
+    *   Caching strategies for large datasets
+    *   Real-time updates via WebSocket
+*   **Security Enhancements:**
+    *   Role-based access control refinement
+    *   Audit logging for all schedule changes
+    *   Data backup and recovery mechanisms
 ---

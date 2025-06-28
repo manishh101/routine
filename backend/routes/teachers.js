@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { createTeacher, getTeachers, getTeacherById, updateTeacher, deleteTeacher } = require('../controllers/teacherController');
-const { protect, authorize } = require('../middleware/auth');
 const { check } = require('express-validator');
+const teacherController = require('../controllers/teacherController');
+const routineController = require('../controllers/routineController');
+const teacherScheduleController = require('../controllers/teacherScheduleController');
+const { verifyToken, requireAdmin } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -44,15 +46,15 @@ const { check } = require('express-validator');
  */
 router.post(
   '/',
-  protect,
-  authorize('admin'),
+  verifyToken,
+  requireAdmin,
   [
     check('name', 'Name is required').not().isEmpty(),
     check('email', 'Please include a valid email').isEmail(),
     check('department', 'Department is required').not().isEmpty(),
     check('designation', 'Designation is required').not().isEmpty(),
   ],
-  createTeacher
+  teacherController.createTeacher
 );
 
 /**
@@ -67,7 +69,7 @@ router.post(
  *       200:
  *         description: List of teachers
  */
-router.get('/', getTeachers);
+router.get('/', teacherController.getTeachers);
 
 /**
  * @swagger
@@ -89,7 +91,7 @@ router.get('/', getTeachers);
  *       404:
  *         description: Teacher not found
  */
-router.get('/:id', getTeacherById);
+router.get('/:id', verifyToken, teacherController.getTeacherById);
 
 /**
  * @swagger
@@ -130,9 +132,9 @@ router.get('/:id', getTeacherById);
  */
 router.put(
   '/:id',
-  protect,
-  authorize('admin'),
-  updateTeacher
+  verifyToken,
+  requireAdmin,
+  teacherController.updateTeacher
 );
 
 /**
@@ -155,6 +157,68 @@ router.put(
  *       404:
  *         description: Teacher not found
  */
-router.delete('/:id', protect, authorize('admin'), deleteTeacher);
+router.delete('/:id', verifyToken, requireAdmin, teacherController.deleteTeacher);
+
+/**
+ * @swagger
+ * /api/teachers/{id}/schedule:
+ *   get:
+ *     summary: Get a teacher's pre-generated schedule
+ *     tags: [Teachers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The teacher's ID
+ *     responses:
+ *       200:
+ *         description: The teacher's schedule
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Teacher schedule not found
+ */
+router.get('/:id/schedule', teacherScheduleController.getTeacherSchedule);
+
+/**
+ * @swagger
+ * /api/teachers/{id}/schedule/excel:
+ *   get:
+ *     summary: Export a teacher's schedule as Excel file
+ *     tags: [Teachers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The teacher's ID
+ *     responses:
+ *       200:
+ *         description: Excel file containing the teacher's schedule
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Teacher or schedule not found
+ */
+router.get('/:id/schedule/excel', teacherScheduleController.exportTeacherSchedule);
 
 module.exports = router;

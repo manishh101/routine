@@ -12,7 +12,7 @@ const Program = require('../models/Program');
 const Room = require('../models/Room');
 const TimeSlot = require('../models/TimeSlot');
 const RoutineSlot = require('../models/RoutineSlot');
-const TeacherSchedule = require('../models/TeacherSchedule');
+// TeacherSchedule model has been removed (unused)
 const User = require('../models/User');
 
 async function clearDatabase() {
@@ -30,7 +30,7 @@ async function clearDatabase() {
       { model: Room, name: 'Rooms' },
       { model: TimeSlot, name: 'TimeSlots' },
       { model: RoutineSlot, name: 'RoutineSlots' },
-      { model: TeacherSchedule, name: 'TeacherSchedules' },
+      // TeacherSchedule model has been removed
     ];
 
     for (const { model, name } of collections) {

@@ -23,7 +23,7 @@ const routineSlotSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 0,
-    max: 5 // 0=Sunday, 1=Monday, ..., 5=Friday (as per MD spec)
+    max: 6 // 0=Sunday, 1=Monday, ..., 6=Saturday (as per architecture spec)
   },
   slotIndex: {
     type: Number,
@@ -55,6 +55,16 @@ const routineSlotSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  // Fields for multi-slot spanning classes
+  spanMaster: {
+    type: Boolean,
+    default: false
+  },
+  spanId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'RoutineSlot',
+    default: null
+  },
   // Denormalized display fields (as per MD spec)
   subjectName_display: {
     type: String,
@@ -84,7 +94,7 @@ const routineSlotSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound indexes for collision detection and fast queries (as per MD spec)
+// Compound indexes for collision detection and fast queries (as per architecture spec)
 // Unique index to ensure only one class per program-sem-sec-day-slot
 routineSlotSchema.index({ 
   programCode: 1, 
@@ -94,14 +104,14 @@ routineSlotSchema.index({
   slotIndex: 1 
 }, { unique: true });
 
-// Teacher collision detection index
+// Teacher collision detection index (as per architecture spec)
 routineSlotSchema.index({ 
   dayIndex: 1, 
   slotIndex: 1, 
   teacherIds: 1 
 });
 
-// Room collision detection index
+// Room collision detection index (as per architecture spec)
 routineSlotSchema.index({ 
   dayIndex: 1, 
   slotIndex: 1, 
@@ -112,5 +122,6 @@ routineSlotSchema.index({
 routineSlotSchema.index({ programCode: 1, semester: 1, section: 1 });
 routineSlotSchema.index({ teacherIds: 1 });
 routineSlotSchema.index({ subjectId: 1 });
+routineSlotSchema.index({ teacherIds: 1, dayIndex: 1, slotIndex: 1 }); // Alternate for teacher schedule queries
 
 module.exports = mongoose.model('RoutineSlot', routineSlotSchema);

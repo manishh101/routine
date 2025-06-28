@@ -205,7 +205,7 @@ const Subjects = () => {
       {/* Statistics Cards */}
       <Row gutter={[24, 24]}>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Total Subjects</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#722ed1', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : subjects.length}
@@ -213,7 +213,7 @@ const Subjects = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Active Subjects</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#52c41a', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : subjects.filter(s => s.isActive !== false).length}
@@ -221,7 +221,7 @@ const Subjects = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Total Credits</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#1677ff', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : subjects.reduce((sum, s) => sum + (parseInt(s.credits) || 0), 0)}
@@ -229,7 +229,7 @@ const Subjects = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Semesters</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#fa8c16', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : (new Set(subjects.map(s => s.semester).filter(Boolean)).size || (subjects.length > 0 ? 1 : 0))}
@@ -239,7 +239,7 @@ const Subjects = () => {
       </Row>
 
       {/* Subjects Table */}
-      <Card style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} bodyStyle={{ padding: 0 }}>
+      <Card style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={subjects}

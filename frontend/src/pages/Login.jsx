@@ -16,29 +16,91 @@ const Login = () => {
     clearError();
     const success = await login(values.email, values.password);
     if (success) {
-      navigate('/dashboard');
+      navigate('/admin'); // Redirect to admin panel after login
     }
   };
 
   return (
-    <AntLayout style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #ece9e6 0%, #ffffff 100%)' }}>
-      <Content style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+    <AntLayout style={{ 
+      minHeight: '100vh', 
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Background decorative elements */}
+      <div style={{
+        position: 'absolute',
+        top: '-50%',
+        right: '-20%',
+        width: '800px',
+        height: '800px',
+        background: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: '50%',
+        transform: 'rotate(45deg)'
+      }} />
+      <div style={{
+        position: 'absolute',
+        bottom: '-30%',
+        left: '-10%',
+        width: '600px',
+        height: '600px',
+        background: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: '50%'
+      }} />
+      
+      <Content style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        padding: '24px',
+        position: 'relative',
+        zIndex: 1
+      }}>
         <Card 
           style={{ 
             width: '100%', 
-            maxWidth: '400px', 
-            boxShadow: '0 8px 30px rgba(0,0,0,0.1)',
-            borderRadius: '12px',
+            maxWidth: '420px', 
+            background: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '20px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
           }}
+          styles={{ body: { padding: '40px' } }}
+          className="fade-in"
         >
-          <Row justify="center" style={{ marginBottom: '24px' }}>
+          <Row justify="center" style={{ marginBottom: '32px' }}>
             <Col>
-              <Space direction="vertical" align="center" size="small">
-                <ScheduleOutlined style={{ fontSize: '48px', color: '#1677ff' }} />
-                <Title level={2} style={{ margin: 0, color: '#262626' }}>
-                  Admin Login
-                </Title>
-                <Text type="secondary">Sign in to manage the system</Text>
+              <Space direction="vertical" align="center" size="large">
+                <div style={{
+                  width: '80px',
+                  height: '80px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  borderRadius: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 10px 20px rgba(102, 126, 234, 0.3)'
+                }}>
+                  <ScheduleOutlined style={{ fontSize: '40px', color: 'white' }} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <Title level={2} style={{ 
+                    margin: 0, 
+                    color: '#1f2937',
+                    fontWeight: 700,
+                    letterSpacing: '-0.02em'
+                  }}>
+                    Admin Portal
+                  </Title>
+                  <Text style={{ 
+                    color: '#6b7280', 
+                    fontSize: '16px',
+                    fontWeight: 400
+                  }}>
+                    Sign in to manage the system
+                  </Text>
+                </div>
               </Space>
             </Col>
           </Row>
@@ -50,7 +112,12 @@ const Login = () => {
               showIcon
               closable
               onClose={clearError}
-              style={{ marginBottom: '24px' }}
+              style={{ 
+                marginBottom: '24px',
+                borderRadius: '12px',
+                border: '1px solid #fecaca',
+                background: '#fef2f2'
+              }}
             />
           )}
 
@@ -63,7 +130,7 @@ const Login = () => {
           >
             <Form.Item
               name="email"
-              label={<Text strong>Email Address</Text>}
+              label={<Text strong style={{ color: '#374151' }}>Email Address</Text>}
               rules={[
                 { required: true, message: 'Please input your email!' },
                 { type: 'email', message: 'Please enter a valid email!' },
@@ -72,30 +139,48 @@ const Login = () => {
               <Input
                 prefix={<UserOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
                 placeholder="e.g. admin@example.com"
-                style={{ borderRadius: '6px' }}
+                style={{ 
+                  borderRadius: '12px',
+                  border: '1px solid #d1d5db',
+                  padding: '12px 16px',
+                  fontSize: '16px'
+                }}
               />
             </Form.Item>
 
             <Form.Item
               name="password"
-              label={<Text strong>Password</Text>}
+              label={<Text strong style={{ color: '#374151' }}>Password</Text>}
               rules={[{ required: true, message: 'Please input your password!' }]}
             >
               <Input.Password
                 prefix={<LockOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
                 placeholder="Enter your password"
-                style={{ borderRadius: '6px' }}
+                style={{ 
+                  borderRadius: '12px',
+                  border: '1px solid #d1d5db',
+                  padding: '12px 16px',
+                  fontSize: '16px'
+                }}
               />
             </Form.Item>
 
-            <Form.Item style={{ marginBottom: '12px' }}>
+            <Form.Item style={{ marginBottom: '24px' }}>
               <Button
                 type="primary"
                 htmlType="submit"
                 loading={isLoading}
                 icon={<LoginOutlined />}
                 block
-                style={{ height: '48px', fontSize: '16px', borderRadius: '6px' }}
+                style={{ 
+                  height: '50px', 
+                  fontSize: '16px', 
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  border: 'none',
+                  fontWeight: 600,
+                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)'
+                }}
               >
                 Sign In
               </Button>
@@ -103,8 +188,15 @@ const Login = () => {
           </Form>
 
           <div style={{ textAlign: 'center', marginTop: '24px' }}>
-            <Text type="secondary">
-              <Link to="/" style={{ color: '#1677ff', fontWeight: 500 }}>
+            <Text style={{ color: '#6b7280' }}>
+              <Link 
+                to="/" 
+                style={{ 
+                  color: '#667eea', 
+                  fontWeight: 500,
+                  textDecoration: 'none'
+                }}
+              >
                 ← Back to Public View
               </Link>
             </Text>

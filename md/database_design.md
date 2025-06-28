@@ -269,6 +269,8 @@ Scheduling Core: routineSlots links to programs (via programCode), subjects, tea
 
 Denormalization: _display fields in routineSlots and teacherSchedules, and potentially in programSemesters.subjectsOffered, are denormalized for read performance. Application logic must ensure these are updated if the source data in master collections changes (e.g., a subject name is corrected).
 
+Teacher Schedule Generation: When a routine slot is updated, a message containing affected teacher IDs is published to a RabbitMQ queue. A separate worker service processes these messages to update the denormalized teacherSchedules collection, ensuring data consistency.
+
 Application-level validation is crucial for maintaining data consistency.
 
 4. Query Examples (Illustrative)

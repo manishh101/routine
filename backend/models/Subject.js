@@ -28,6 +28,16 @@ const SubjectSchema = new mongoose.Schema(
       enum: ['L', 'P', 'T'],
       default: 'L'
     },
+    semester: {
+      type: Number,
+      min: 1,
+      max: 8
+    },
+    programCode: {
+      type: String,
+      trim: true,
+      uppercase: true
+    },
     isActive: {
       type: Boolean,
       default: true

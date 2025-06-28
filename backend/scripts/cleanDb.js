@@ -11,7 +11,7 @@ const Program = require('../models/Program');
 const Room = require('../models/Room');
 const TimeSlot = require('../models/TimeSlot');
 const RoutineSlot = require('../models/RoutineSlot');
-const TeacherSchedule = require('../models/TeacherSchedule');
+// TeacherSchedule model has been removed (unused)
 const User = require('../models/User');
 
 // Legacy model (if it exists)
@@ -56,8 +56,9 @@ const cleanDatabase = async () => {
     await RoutineSlot.deleteMany({});
     console.log('✅ All routine slots deleted');
     
-    await TeacherSchedule.deleteMany({});
-    console.log('✅ All teacher schedules deleted');
+    // Teacher schedule cleanup disabled - teacher routine functionality removed
+    // await TeacherSchedule.deleteMany({});
+    // console.log('✅ All teacher schedules deleted');
     
     // Clear users (except keep admins if you want)
     await User.deleteMany({ role: { $ne: 'admin' } });

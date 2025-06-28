@@ -35,9 +35,14 @@ const Teachers = () => {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['teachers'],
     queryFn: fetchTeachers,
-    retry: 1,
+    retry: 3, // Increased from 1 to 3 retries
+    retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
     refetchOnMount: false,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    // Add timeout handling
+    meta: {
+      timeout: 30000 // 30 seconds
+    }
   });
 
   const teachers = data?.data || [];
@@ -151,7 +156,20 @@ const Teachers = () => {
     return (
       <Card style={{ textAlign: 'center', padding: '40px', borderRadius: '8px' }}>
         <Title level={4} type="danger">Error Loading Teachers</Title>
-        <Text type="secondary">{error?.message || 'An unknown error occurred.'}</Text>
+        <Text type="secondary">
+          {error?.code === 'ECONNABORTED' ? 
+            'Request timed out - Backend server may not be running' :
+            error?.message || 'An unknown error occurred.'
+          }
+        </Text>
+        <br />
+        <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: '8px' }}>
+          Error details: {JSON.stringify({
+            code: error?.code,
+            status: error?.response?.status,
+            timeout: error?.code === 'ECONNABORTED'
+          })}
+        </Text>
         <br />
         <Button 
           type="primary" 
@@ -197,7 +215,7 @@ const Teachers = () => {
       {/* Statistics Cards */}
       <Row gutter={[24, 24]}>
         <Col xs={24} sm={12} md={8}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Total Teachers</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#1677ff', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : teachers.length}
@@ -205,7 +223,7 @@ const Teachers = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Active Teachers</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#52c41a', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : teachers.filter(t => t.isActive !== false).length}
@@ -213,7 +231,7 @@ const Teachers = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Departments</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#722ed1', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : (new Set(teachers.map(t => t.department).filter(Boolean)).size || (teachers.length > 0 ? 1 : 0) )}
@@ -223,7 +241,7 @@ const Teachers = () => {
       </Row>
 
       {/* Teachers Table */}
-      <Card style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} bodyStyle={{ padding: 0 }}>
+      <Card style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} styles={{ body: { padding: 0 } }}>
          <Table
             columns={columns}
             dataSource={teachers}

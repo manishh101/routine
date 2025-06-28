@@ -16,14 +16,11 @@ const createAdmin = async () => {
       return;
     }
     
-    // Create admin user
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash('admin123', salt);
-    
+    // Create admin user - let the User model handle password hashing
     const admin = new User({
       name: 'System Administrator',
       email: 'admin@routine.com',
-      password: hashedPassword,
+      password: 'admin123', // Plain text password - will be hashed by pre-save hook
       role: 'admin'
     });
     

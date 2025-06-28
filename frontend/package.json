@@ -14,6 +14,8 @@
     "@tailwindcss/postcss": "^4.1.10",
     "@tailwindcss/vite": "^4.1.10",
     "@tanstack/react-query": "^5.80.7",
+    "ag-grid-community": "^33.3.2",
+    "ag-grid-react": "^33.3.2",
     "antd": "^5.26.1",
     "autoprefixer": "^10.4.21",
     "axios": "^1.10.0",
@@ -24,6 +26,7 @@
     "react-router-dom": "^7.6.2",
     "styled-components": "^6.1.19",
     "tailwindcss": "^4.1.10",
+    "xlsx": "^0.18.5",
     "zustand": "^5.0.5"
   },
   "devDependencies": {

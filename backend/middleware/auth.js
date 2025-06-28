@@ -15,18 +15,37 @@ exports.protect = async (req, res, next) => {
 
   // Make sure token exists
   if (!token) {
+    console.log('Authentication failed: No token provided');
     return res.status(401).json({ msg: 'No token, authorization denied' });
   }
 
   try {
+    // Check if JWT_SECRET is set
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET is not defined in environment variables');
+      return res.status(500).json({ msg: 'Server configuration error' });
+    }
+
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    if (!decoded || !decoded.user || !decoded.user.id) {
+      console.error('Token verification failed: Invalid payload structure');
+      return res.status(401).json({ msg: 'Token payload is invalid' });
+    }
 
     // Set req.user to the user in the token
-    req.user = await User.findById(decoded.user.id).select('-password');
+    const user = await User.findById(decoded.user.id).select('-password');
+    
+    if (!user) {
+      console.error(`User with ID ${decoded.user.id} not found in database`);
+      return res.status(401).json({ msg: 'User not found' });
+    }
+    
+    req.user = user;
     next();
   } catch (err) {
-    console.error(err.message);
+    console.error('JWT verification error:', err.message);
     res.status(401).json({ msg: 'Token is not valid' });
   }
 };
@@ -42,3 +61,7 @@ exports.authorize = (role) => {
     next();
   };
 };
+
+// Alias exports for compatibility
+exports.verifyToken = exports.protect;
+exports.requireAdmin = exports.authorize('admin');

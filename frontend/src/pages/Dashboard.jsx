@@ -92,22 +92,22 @@ const Dashboard = () => {
 
   // Stats cards are shown to all users
   const stats = [
-    { title: 'Total Teachers', value: teachers.length, icon: <TeamOutlined />, color: '#1677ff', path: isAdmin ? '/admin/teachers' : '/teacher-schedule' },
-    { title: 'Total Programs', value: programs.length, icon: <BookOutlined />, color: '#52c41a', path: isAdmin ? '/admin/programs' : '' },
-    { title: 'Total Subjects', value: subjects.length, icon: <ReadOutlined />, color: '#722ed1', path: isAdmin ? '/admin/subjects' : '' }
+    { title: 'Total Teachers', value: teachers.length, icon: <TeamOutlined />, color: '#1677ff', path: isAdmin ? '/teachers-manager' : '/teacher-routine' },
+    { title: 'Total Programs', value: programs.length, icon: <BookOutlined />, color: '#52c41a', path: isAdmin ? '/programs-manager' : '' },
+    { title: 'Total Subjects', value: subjects.length, icon: <ReadOutlined />, color: '#722ed1', path: isAdmin ? '/subjects-manager' : '' }
   ];
 
   // Different quick actions based on user role
   const adminQuickActions = [
-    { title: 'Manage Teachers', description: 'View, add, or edit faculty members', icon: <TeamOutlined />, path: '/admin/teachers', color: '#1677ff' },
-    { title: 'Manage Programs', description: 'Define and update academic programs', icon: <BookOutlined />, path: '/admin/programs', color: '#52c41a' },
-    { title: 'Manage Subjects', description: 'Organize course subjects and details', icon: <ReadOutlined />, path: '/admin/subjects', color: '#722ed1' },
-    { title: 'View Routine', description: 'Check the complete class schedule grid', icon: <CalendarOutlined />, path: '/routine', color: '#eb2f96' }
+    { title: 'Manage Teachers', description: 'View, add, or edit faculty members', icon: <TeamOutlined />, path: '/teachers-manager', color: '#1677ff' },
+    { title: 'Manage Programs', description: 'Define and update academic programs', icon: <BookOutlined />, path: '/programs-manager', color: '#52c41a' },
+    { title: 'Manage Subjects', description: 'Organize course subjects and details', icon: <ReadOutlined />, path: '/subjects-manager', color: '#722ed1' },
+    { title: 'View Routine', description: 'Check the complete class schedule grid', icon: <CalendarOutlined />, path: '/program-routine', color: '#eb2f96' }
   ];
 
   const userQuickActions = [
-    { title: 'View Class Routine', description: 'Check class schedules and timetables', icon: <CalendarOutlined />, path: '/routine', color: '#1677ff' },
-    { title: 'Teacher Schedules', description: 'View faculty teaching timetables', icon: <TeamOutlined />, path: '/teacher-schedule', color: '#52c41a' },
+    { title: 'View Class Routine', description: 'Check class schedules and timetables', icon: <CalendarOutlined />, path: '/program-routine', color: '#1677ff' },
+    { title: 'Teacher Schedules', description: 'View faculty teaching timetables', icon: <TeamOutlined />, path: '/teacher-routine', color: '#52c41a' },
     { title: 'My Profile', description: 'Update your account information', icon: <UserOutlined />, path: '/profile', color: '#722ed1' }
   ];
   
@@ -133,20 +133,81 @@ const Dashboard = () => {
   const gettingStarted = isAdmin ? adminGettingStarted : userGettingStarted;
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Page Header */}
-      <Row justify="space-between" align="center" style={{ marginBottom: '16px' }}>
-          <Space align="center" size="middle">
-            <DashboardFilled style={{ fontSize: '32px', color: '#1677ff' }} />
-            <div>
-              <Title level={2} style={{ margin: 0 }}>Dashboard Overview</Title>
-              <Paragraph type="secondary" style={{ margin: 0, fontSize: '15px' }}>
-                Welcome to the BE Routine Management System.
-              </Paragraph>
-            </div>
-          </Space>
-          {isFetching && !isLoading && <Spin tip="Updating data..." size="small" />}
-      </Row>
+    <div className="fade-in" style={{ width: '100%' }}>
+      {/* Modern Header Section */}
+      <div style={{ 
+        marginBottom: '32px',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        borderRadius: '16px',
+        padding: '32px',
+        color: 'white',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: '200px',
+          height: '200px',
+          background: 'rgba(255, 255, 255, 0.1)',
+          borderRadius: '50%',
+          transform: 'translate(50%, -50%)'
+        }} />
+        <Row justify="space-between" align="center">
+          <Col>
+            <Space align="center" size="large">
+              <div style={{
+                width: '56px',
+                height: '56px',
+                background: 'rgba(255, 255, 255, 0.2)',
+                borderRadius: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <DashboardFilled style={{ fontSize: '28px', color: 'white' }} />
+              </div>
+              <div>
+                <Title level={1} style={{ 
+                  margin: 0, 
+                  color: 'white',
+                  fontWeight: 700,
+                  letterSpacing: '-0.02em'
+                }}>
+                  {isAdmin ? 'Admin Dashboard' : 'Welcome Back'}
+                </Title>
+                <Paragraph style={{ 
+                  margin: '8px 0 0 0', 
+                  fontSize: '16px',
+                  color: 'rgba(255, 255, 255, 0.9)',
+                  fontWeight: 400
+                }}>
+                  {isAdmin 
+                    ? 'Manage your institution\'s routine system' 
+                    : 'Access class schedules and teacher information'
+                  }
+                </Paragraph>
+              </div>
+            </Space>
+          </Col>
+          {isFetching && !isLoading && (
+            <Col>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '12px',
+                background: 'rgba(255, 255, 255, 0.2)',
+                padding: '8px 16px',
+                borderRadius: '8px'
+              }}>
+                <Spin size="small" />
+                <Text style={{ color: 'white', fontSize: '14px' }}>Syncing data...</Text>
+              </div>
+            </Col>
+          )}
+        </Row>
+      </div>
 
       {hasError && (
         <Alert
@@ -155,27 +216,70 @@ const Dashboard = () => {
           type="warning"
           showIcon
           closable
-          style={{ marginBottom: '24px' }}
+          style={{ marginBottom: '32px' }}
         />
       )}
 
-      {/* Statistics Cards */}
-      <Row gutter={[24, 24]}>
+      {/* Modern Statistics Cards */}
+      <Row gutter={[24, 24]} style={{ marginBottom: '32px' }}>
         {stats.map((stat) => (
           <Col xs={24} sm={12} lg={8} key={stat.title}>
             <Card
               hoverable={!!stat.path}
               onClick={() => stat.path && navigate(stat.path)}
-              style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)'}}
-              styles={{ body: { padding: '20px' } }}
+              style={{ 
+                borderRadius: '16px', 
+                border: '1px solid rgba(0, 0, 0, 0.06)',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+              styles={{ body: { padding: '24px' } }}
+              className="slide-up"
             >
-              <Statistic
-                title={<Text style={{fontSize: '15px', color: '#595959'}}>{stat.title}</Text>}
-                value={isLoading && stat.value === 0 ? <Spin size="small" /> : stat.value}
-                precision={0}
-                prefix={<Avatar size="large" icon={stat.icon} style={{ backgroundColor: `${stat.color}20`, color: stat.color, marginRight: '12px' }} />}
-                valueStyle={{ color: stat.color, fontSize: '32px', fontWeight: 'bold' }}
-              />
+              <Row align="middle" justify="space-between">
+                <Col>
+                  <div style={{ marginBottom: '8px' }}>
+                    <Text type="secondary" style={{ 
+                      fontSize: '14px', 
+                      fontWeight: 500,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      {stat.title}
+                    </Text>
+                  </div>
+                  <div style={{ 
+                    fontSize: '32px', 
+                    fontWeight: 700,
+                    color: stat.color,
+                    lineHeight: 1.2,
+                    marginBottom: '4px'
+                  }}>
+                    {isLoading && stat.value === 0 ? <Spin size="small" /> : stat.value}
+                  </div>
+                  {stat.subtitle && (
+                    <Text type="secondary" style={{ fontSize: '13px' }}>
+                      {stat.subtitle}
+                    </Text>
+                  )}
+                </Col>
+                <Col>
+                  <div style={{
+                    width: '56px',
+                    height: '56px',
+                    background: `linear-gradient(135deg, ${stat.color}20 0%, ${stat.color}10 100%)`,
+                    borderRadius: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '24px',
+                    color: stat.color
+                  }}>
+                    {stat.icon}
+                  </div>
+                </Col>
+              </Row>
             </Card>
           </Col>
         ))}
@@ -248,7 +352,7 @@ const Dashboard = () => {
           </Card>
         </Col>
       </Row>
-    </Space>
+    </div>
   );
 };
 

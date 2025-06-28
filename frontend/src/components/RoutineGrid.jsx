@@ -1,44 +1,31 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Card,
-  Typography,
-  Button,
-  Space,
-  Tag,
-  Tooltip,
-  message,
-  Popconfirm,
-  Empty,
-  Spin,
-  Alert
+import React, { useState, useMemo } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { 
+  Card, 
+  Tag, 
+  Button, 
+  Space, 
+  Typography, 
+  Alert, 
+  Spin, 
+  Empty, 
+  Modal, 
+  message
 } from 'antd';
-import {
-  PlusOutlined,
-  EditOutlined,
+import { 
+  PlusOutlined, 
   DeleteOutlined
 } from '@ant-design/icons';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AssignClassModal from './AssignClassModal';
-import { routinesAPI, timeslotsAPI } from '../services/api';
+import ExcelActions from './ExcelActions';
+import TeacherExcelActions from './TeacherExcelActions';
+import { routinesAPI, timeSlotsAPI } from '../services/api';
+import { handleRoutineChangeCache } from '../utils/teacherScheduleCache';
+import './RoutineGrid.css';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
-// Demo data functions for comprehensive routine demonstration
-const getDemoTimeSlots = () => {
-  return {
-    data: {
-      data: [
-        { _id: '0', label: "P1 10:15-11:05", startTime: "10:15", endTime: "11:05", isBreak: false, sortOrder: 0 },
-        { _id: '1', label: "P2 11:05-11:55", startTime: "11:05", endTime: "11:55", isBreak: false, sortOrder: 1 },
-        { _id: '2', label: "BREAK", startTime: "11:55", endTime: "12:45", isBreak: true, sortOrder: 2 },
-        { _id: '3', label: "P3 12:45-13:35", startTime: "12:45", endTime: "13:35", isBreak: false, sortOrder: 3 },
-        { _id: '4', label: "P4 13:35-14:25", startTime: "13:35", endTime: "14:25", isBreak: false, sortOrder: 4 },
-        { _id: '5', label: "P5 14:25-15:15", startTime: "14:25", endTime: "15:15", isBreak: false, sortOrder: 5 },
-      ]
-    }
-  };
-};
-
+// Demo data function for demonstration purposes
 const getDemoRoutineData = (programCode, semester, section) => {
   return {
     data: {
@@ -64,39 +51,9 @@ const getDemoRoutineData = (programCode, semester, section) => {
             roomName: "Room A-102 (Lecture Hall)",
             classType: "L",
             notes: ""
-          },
-          '3': {
-            _id: "demo_sun_3",
-            subjectName: "Engineering Chemistry",
-            subjectCode: "CHEM101",
-            teacherNames: ["Dr. Ravi Kant Joshi"],
-            teacherShortNames: ["Dr. RK"],
-            roomName: "Chemistry Lab",
-            classType: "P",
-            notes: "Lab session"
-          },
-          '4': {
-            _id: "demo_sun_4",
-            subjectName: "Programming in C",
-            subjectCode: "COMP101",
-            teacherNames: ["Asst. Prof. Manish Pokhrel"],
-            teacherShortNames: ["Asst. MP"],
-            roomName: "Computer Lab 1",
-            classType: "L",
-            notes: ""
-          },
-          '5': {
-            _id: "demo_sun_5",
-            subjectName: "Engineering Drawing",
-            subjectCode: "DRAW101",
-            teacherNames: ["Prof. Jivan Shrestha"],
-            teacherShortNames: ["Prof. JS"],
-            roomName: "Drawing Hall",
-            classType: "P",
-            notes: "Practical session"
           }
         },
-        // Monday
+        // Monday  
         '1': {
           '0': {
             _id: "demo_mon_0",
@@ -107,251 +64,67 @@ const getDemoRoutineData = (programCode, semester, section) => {
             roomName: "Room A-201 (Tutorial Room)",
             classType: "L",
             notes: ""
-          },
-          '1': {
-            _id: "demo_mon_1",
-            subjectName: "Engineering Mathematics I",
-            subjectCode: "MATH101",
-            teacherNames: ["Dr. Shyam Kumar Shrestha"],
-            teacherShortNames: ["Dr. SK"],
-            roomName: "Room A-101 (Lecture Hall)",
-            classType: "T",
-            notes: "Tutorial"
-          },
-          '3': {
-            _id: "demo_mon_3",
-            subjectName: "Programming in C",
-            subjectCode: "COMP101",
-            teacherNames: ["Asst. Prof. Manish Pokhrel"],
-            teacherShortNames: ["Asst. MP"],
-            roomName: "Computer Lab 1",
-            classType: "P",
-            notes: "Lab work"
-          },
-          '4': {
-            _id: "demo_mon_4",
-            subjectName: "Engineering Chemistry",
-            subjectCode: "CHEM101",
-            teacherNames: ["Dr. Ravi Kant Joshi"],
-            teacherShortNames: ["Dr. RK"],
-            roomName: "Room A-102 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          }
-        },
-        // Tuesday
-        '2': {
-          '0': {
-            _id: "demo_tue_0",
-            subjectName: "Engineering Mathematics I",
-            subjectCode: "MATH101",
-            teacherNames: ["Dr. Shyam Kumar Shrestha"],
-            teacherShortNames: ["Dr. SK"],
-            roomName: "Room A-101 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          },
-          '1': {
-            _id: "demo_tue_1",
-            subjectName: "Engineering Physics",
-            subjectCode: "PHYS101",
-            teacherNames: ["Prof. Dr. Narayan Prasad Adhikari"],
-            teacherShortNames: ["Prof. NP"],
-            roomName: "Physics Lab",
-            classType: "P",
-            notes: "Lab experiment"
-          },
-          '3': {
-            _id: "demo_tue_3",
-            subjectName: "Engineering Chemistry",
-            subjectCode: "CHEM101",
-            teacherNames: ["Dr. Ravi Kant Joshi"],
-            teacherShortNames: ["Dr. RK"],
-            roomName: "Room A-102 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          },
-          '4': {
-            _id: "demo_tue_4",
-            subjectName: "English",
-            subjectCode: "ENG101",
-            teacherNames: ["Dr. Prakash Sayami"],
-            teacherShortNames: ["Dr. PS"],
-            roomName: "Room A-201 (Tutorial Room)",
-            classType: "T",
-            notes: "Writing practice"
-          },
-          '5': {
-            _id: "demo_tue_5",
-            subjectName: "Programming in C",
-            subjectCode: "COMP101",
-            teacherNames: ["Asst. Prof. Manish Pokhrel"],
-            teacherShortNames: ["Asst. MP"],
-            roomName: "Room A-101 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          }
-        },
-        // Wednesday
-        '3': {
-          '0': {
-            _id: "demo_wed_0",
-            subjectName: "Engineering Physics",
-            subjectCode: "PHYS101",
-            teacherNames: ["Prof. Dr. Narayan Prasad Adhikari"],
-            teacherShortNames: ["Prof. NP"],
-            roomName: "Room A-102 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          },
-          '1': {
-            _id: "demo_wed_1",
-            subjectName: "Engineering Drawing",
-            subjectCode: "DRAW101",
-            teacherNames: ["Prof. Jivan Shrestha"],
-            teacherShortNames: ["Prof. JS"],
-            roomName: "Drawing Hall",
-            classType: "L",
-            notes: ""
-          },
-          '3': {
-            _id: "demo_wed_3",
-            subjectName: "Engineering Mathematics I",
-            subjectCode: "MATH101",
-            teacherNames: ["Dr. Shyam Kumar Shrestha"],
-            teacherShortNames: ["Dr. SK"],
-            roomName: "Room A-102 (Lecture Hall)",
-            classType: "T",
-            notes: "Problem solving"
-          },
-          '4': {
-            _id: "demo_wed_4",
-            subjectName: "Programming in C",
-            subjectCode: "COMP101",
-            teacherNames: ["Asst. Prof. Manish Pokhrel"],
-            teacherShortNames: ["Asst. MP"],
-            roomName: "Computer Lab 2",
-            classType: "P",
-            notes: "Assignment work"
-          },
-          '5': {
-            _id: "demo_wed_5",
-            subjectName: "Engineering Drawing",
-            subjectCode: "DRAW101",
-            teacherNames: ["Prof. Jivan Shrestha"],
-            teacherShortNames: ["Prof. JS"],
-            roomName: "Drawing Hall",
-            classType: "P",
-            notes: "Drawing practice"
-          }
-        },
-        // Thursday
-        '4': {
-          '0': {
-            _id: "demo_thu_0",
-            subjectName: "English",
-            subjectCode: "ENG101",
-            teacherNames: ["Dr. Prakash Sayami"],
-            teacherShortNames: ["Dr. PS"],
-            roomName: "Room A-101 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          },
-          '1': {
-            _id: "demo_thu_1",
-            subjectName: "Engineering Physics",
-            subjectCode: "PHYS101",
-            teacherNames: ["Prof. Dr. Narayan Prasad Adhikari"],
-            teacherShortNames: ["Prof. NP"],
-            roomName: "Physics Lab",
-            classType: "P",
-            notes: "Lab report"
-          },
-          '3': {
-            _id: "demo_thu_3",
-            subjectName: "Engineering Chemistry",
-            subjectCode: "CHEM101",
-            teacherNames: ["Dr. Ravi Kant Joshi"],
-            teacherShortNames: ["Dr. RK"],
-            roomName: "Chemistry Lab",
-            classType: "P",
-            notes: "Experiment"
-          },
-          '4': {
-            _id: "demo_thu_4",
-            subjectName: "Engineering Mathematics I",
-            subjectCode: "MATH101",
-            teacherNames: ["Dr. Shyam Kumar Shrestha"],
-            teacherShortNames: ["Dr. SK"],
-            roomName: "Room A-101 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          },
-          '5': {
-            _id: "demo_thu_5",
-            subjectName: "Programming in C",
-            subjectCode: "COMP101",
-            teacherNames: ["Asst. Prof. Manish Pokhrel"],
-            teacherShortNames: ["Asst. MP"],
-            roomName: "Computer Lab 2",
-            classType: "P",
-            notes: "Project work"
-          }
-        },
-        // Friday
-        '5': {
-          '0': {
-            _id: "demo_fri_0",
-            subjectName: "Engineering Drawing",
-            subjectCode: "DRAW101",
-            teacherNames: ["Prof. Jivan Shrestha"],
-            teacherShortNames: ["Prof. JS"],
-            roomName: "Drawing Hall",
-            classType: "L",
-            notes: ""
-          },
-          '1': {
-            _id: "demo_fri_1",
-            subjectName: "English",
-            subjectCode: "ENG101",
-            teacherNames: ["Dr. Prakash Sayami"],
-            teacherShortNames: ["Dr. PS"],
-            roomName: "Room A-201 (Tutorial Room)",
-            classType: "T",
-            notes: "Presentation"
-          },
-          '3': {
-            _id: "demo_fri_3",
-            subjectName: "Engineering Physics",
-            subjectCode: "PHYS101",
-            teacherNames: ["Prof. Dr. Narayan Prasad Adhikari"],
-            teacherShortNames: ["Prof. NP"],
-            roomName: "Room A-102 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          },
-          '4': {
-            _id: "demo_fri_4",
-            subjectName: "Programming in C",
-            subjectCode: "COMP101",
-            teacherNames: ["Asst. Prof. Manish Pokhrel"],
-            teacherShortNames: ["Asst. MP"],
-            roomName: "Room A-101 (Lecture Hall)",
-            classType: "L",
-            notes: ""
-          },
-          '5': {
-            _id: "demo_fri_5",
-            subjectName: "Engineering Chemistry",
-            subjectCode: "CHEM101",
-            teacherNames: ["Dr. Ravi Kant Joshi"],
-            teacherShortNames: ["Dr. RK"],
-            roomName: "Room A-102 (Lecture Hall)",
-            classType: "T",
-            notes: "Review session"
           }
         }
       }
+    }
+  };
+};
+
+// Demo time slots data
+const getDemoTimeSlots = () => {
+  return {
+    data: {
+      data: [
+        {
+          _id: '0',
+          label: 'Period 1',
+          startTime: '7:30',
+          endTime: '8:15',
+          sortOrder: 0,
+          isBreak: false
+        },
+        {
+          _id: '1',
+          label: 'Period 2',
+          startTime: '8:15',
+          endTime: '9:00',
+          sortOrder: 1,
+          isBreak: false
+        },
+        {
+          _id: '2',
+          label: 'Break',
+          startTime: '9:00',
+          endTime: '9:15',
+          sortOrder: 2,
+          isBreak: true
+        },
+        {
+          _id: '3',
+          label: 'Period 3',
+          startTime: '9:15',
+          endTime: '10:00',
+          sortOrder: 3,
+          isBreak: false
+        },
+        {
+          _id: '4',
+          label: 'Period 4',
+          startTime: '10:00',
+          endTime: '10:45',
+          sortOrder: 4,
+          isBreak: false
+        },
+        {
+          _id: '5',
+          label: 'Period 5',
+          startTime: '10:45',
+          endTime: '11:30',
+          sortOrder: 5,
+          isBreak: false
+        }
+      ]
     }
   };
 };
@@ -361,7 +134,13 @@ const RoutineGrid = ({
   semester, 
   section, 
   isEditable = false,
-  demoMode = false  // New prop for demo mode
+  demoMode = false,
+  onCellDoubleClicked = null,
+  teacherViewMode = false,
+  routineData: providedRoutineData,
+  showExcelActions = false,
+  selectedTeacher = null,
+  selectedTeacherInfo = null
 }) => {
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState({ dayIndex: null, slotIndex: null });
@@ -372,7 +151,7 @@ const RoutineGrid = ({
 
   // Fetch routine data (use demo data if in demo mode)
   const { 
-    data: routineData, 
+    data: fetchedRoutineData, 
     isLoading: routineLoading,
     error: routineError 
   } = useQuery({
@@ -381,19 +160,16 @@ const RoutineGrid = ({
       if (demoMode) {
         return getDemoRoutineData(programCode, semester, section);
       } else {
-        // Use the same transformation as RoutineGridComponentIntegrated
         const response = await routinesAPI.getRoutine(programCode, semester, section);
-        const routineDataFromAPI = response.data?.data?.routine || {};
-        
-        // Transform from 2D object to the same structure as demo data
-        const transformedData = { routine: routineDataFromAPI };
-        
-        return { data: transformedData };
+        return response.data?.data ? { data: response.data.data } : { data: { routine: {} } };
       }
     },
-    enabled: demoMode || !!(programCode && semester && section),
+    enabled: !providedRoutineData && !teacherViewMode && (demoMode || !!(programCode && semester && section)),
     retry: 1
   });
+  
+  // Use either the provided routine data or fetch new data
+  const routineData = providedRoutineData || fetchedRoutineData;
 
   // Fetch time slots (use demo data if in demo mode)
   const { 
@@ -405,10 +181,10 @@ const RoutineGrid = ({
       if (demoMode) {
         return getDemoTimeSlots();
       } else {
-        return timeslotsAPI.getTimeSlots();
+        return timeSlotsAPI.getTimeSlots();
       }
     },
-    staleTime: 5 * 60 * 1000 // 5 minutes
+    staleTime: 5 * 60 * 1000
   });
 
   // Memoized data processing for performance
@@ -422,41 +198,87 @@ const RoutineGrid = ({
 
   // Transform routine data into 2D grid structure for easier rendering
   const routineGridData = useMemo(() => {
-    if (!routine || !timeSlots.length) return {};
+    // Detailed debug to see exactly what data we're working with
+    console.log('RoutineGrid - Creating grid with data:', {
+      hasRoutine: !!routine,
+      routineType: typeof routine,
+      routineIsEmpty: routine && Object.keys(routine).length === 0,
+      timeSlotsCount: timeSlots.length,
+      teacherViewMode
+    });
+    
+    if (routine) {
+      console.log('Routine days available:', Object.keys(routine));
+      
+      // Check a sample day if available
+      const sampleDay = Object.keys(routine)[0];
+      if (sampleDay) {
+        console.log(`Sample day ${sampleDay} data:`, routine[sampleDay]);
+      }
+    }
+    
+    if (!routine || !timeSlots.length) {
+      console.log('Cannot create grid: missing routine or timeSlots');
+      return {};
+    }
 
-    // Initialize grid with null values
     const grid = {};
     dayNames.forEach((dayName, dayIndex) => {
       grid[dayIndex] = {};
       timeSlots.forEach(slot => {
-        grid[dayIndex][slot._id] = null;
+        // Ensure consistent string keys
+        grid[dayIndex][slot._id.toString()] = null;
       });
     });
 
-    // Populate grid with scheduled classes
-    Object.keys(routine).forEach(dayIndex => {
-      Object.keys(routine[dayIndex]).forEach(slotIndex => {
-        const classData = routine[dayIndex][slotIndex];
-        if (classData && grid[dayIndex] && grid[dayIndex].hasOwnProperty(slotIndex)) {
-          grid[dayIndex][slotIndex] = classData;
+    // Log grid structure after initialization
+    console.log('Grid structure initialized with days:', Object.keys(grid));
+    
+    try {
+      // Populate grid with scheduled classes
+      Object.keys(routine).forEach(dayIndex => {
+        console.log(`Processing day ${dayIndex} slots...`);
+        
+        const dayData = routine[dayIndex];
+        if (!dayData || typeof dayData !== 'object') {
+          console.log(`No valid data for day ${dayIndex}`);
+          return; // Skip this day
         }
+        
+        Object.keys(dayData).forEach(slotIndex => {
+          const classData = dayData[slotIndex];
+          // Convert slotIndex to string for proper comparison since object keys are always strings
+          const slotKey = slotIndex.toString();
+          
+          console.log(`Processing slot ${slotKey} for day ${dayIndex}:`, classData);
+          
+          if (classData && grid[dayIndex] && grid[dayIndex].hasOwnProperty(slotKey)) {
+            console.log(`Adding class to grid[${dayIndex}][${slotKey}]`);
+            grid[dayIndex][slotKey] = classData;
+          } else {
+            console.log(`Cannot add class to grid[${dayIndex}][${slotKey}] - invalid slot`);
+          }
+        });
       });
-    });
-
+    } catch (error) {
+      console.error('Error creating routine grid:', error);
+    }
+    
+    // Log final grid for verification
+    console.log('Final grid structure created:', grid);
     return grid;
-  }, [routine, timeSlots]);
+  }, [routine, timeSlots, teacherViewMode]);
 
-  // Helper function to get class type color
+  // Helper functions
   const getClassTypeColor = (classType) => {
     switch (classType) {
-      case 'L': return 'blue';   // Lecture
-      case 'P': return 'green';  // Practical
-      case 'T': return 'orange'; // Tutorial
+      case 'L': return 'blue';
+      case 'P': return 'green';
+      case 'T': return 'orange';
       default: return 'default';
     }
   };
 
-  // Helper function to get class type text
   const getClassTypeText = (classType) => {
     switch (classType) {
       case 'L': return 'Lecture';
@@ -466,29 +288,65 @@ const RoutineGrid = ({
     }
   };
 
-  // Helper function to get cell background color based on class type
   const getCellBackgroundColor = (classType) => {
     switch (classType) {
-      case 'L': return '#e6f7ff'; // Light blue for Lecture
-      case 'P': return '#f6ffed'; // Light green for Practical
-      case 'T': return '#fff7e6'; // Light orange for Tutorial
+      case 'L': return '#e6f7ff';
+      case 'P': return '#f6ffed';
+      case 'T': return '#fff7e6';
       default: return '#ffffff';
     }
+  };
+
+  const calculateRowSpan = (classData, dayData, slotIndex) => {
+    if (!classData?.spanId) return 1;
+    if (classData.spanId && !classData.spanMaster) return 0;
+    
+    const spanGroup = Object.values(dayData || {}).filter(
+      slot => slot?.spanId && slot.spanId === classData.spanId
+    );
+    
+    return spanGroup.length;
+  };
+
+  const isPartOfSpanGroup = (classData) => {
+    return classData?.spanId != null;
   };
 
   // Clear class mutation
   const clearClassMutation = useMutation({
     mutationFn: ({ dayIndex, slotIndex }) => 
       routinesAPI.clearClass(programCode, semester, section, { dayIndex, slotIndex }),
-    onSuccess: () => {
+    onSuccess: async (result) => {
       message.success('Class cleared successfully!');
+      
+      // Use enhanced cache management for teacher schedule synchronization
+      await handleRoutineChangeCache(queryClient, result);
+      
+      // Invalidate routine queries
       queryClient.invalidateQueries(['routine', programCode, semester, section]);
-      queryClient.invalidateQueries(['teacherSchedules']); // Refresh teacher schedules
     },
     onError: (error) => {
       console.error('Clear class error:', error);
       message.error(error.response?.data?.message || 'Failed to clear class');
     },
+  });
+  
+  // Clear span group mutation
+  const clearSpanGroupMutation = useMutation({
+    mutationFn: (spanId) => routinesAPI.clearSpanGroup(spanId),
+    onSuccess: async (result) => {
+      message.success('Multi-period class cleared successfully!');
+      
+      // Use enhanced cache management for teacher schedule synchronization
+      await handleRoutineChangeCache(queryClient, result);
+      
+      // Invalidate routine queries
+      queryClient.invalidateQueries(['routine', programCode, semester, section]);
+    },
+    onError: (error) => {
+      console.error('Clear span group error:', error);
+      message.error(error.response?.data?.message || 'Failed to clear multi-period class');
+    }
   });
 
   const handleSlotClick = (dayIndex, slotIndex) => {
@@ -501,16 +359,28 @@ const RoutineGrid = ({
     }
 
     setSelectedSlot({ dayIndex, slotIndex });
-    
-    // Check if there's an existing class in this slot
     const existingClassData = routine[dayIndex]?.[slotIndex];
-    
     setExistingClass(existingClassData || null);
     setAssignModalVisible(true);
   };
 
   const handleClearClass = (dayIndex, slotIndex) => {
-    clearClassMutation.mutate({ dayIndex, slotIndex });
+    const classData = routineGridData[dayIndex]?.[slotIndex];
+    
+    if (classData?.spanId) {
+      Modal.confirm({
+        title: 'Clear Multi-Period Class',
+        content: 'This is a multi-period class. All time slots for this class will be cleared. Continue?',
+        okText: 'Yes, clear all periods',
+        okType: 'danger',
+        cancelText: 'Cancel',
+        onOk: () => {
+          clearSpanGroupMutation.mutate(classData.spanId);
+        }
+      });
+    } else {
+      clearClassMutation.mutate({ dayIndex, slotIndex });
+    }
   };
 
   const onModalClose = () => {
@@ -519,38 +389,68 @@ const RoutineGrid = ({
     setExistingClass(null);
   };
 
-  // Render class cell content - clean Excel-like format
+  // Render class cell content
   const renderClassContent = (classData) => {
     if (!classData) {
+      // Add debug info
+      console.log('No class data to render in RoutineGrid');
       return <Text type="secondary" style={{ fontSize: '11px' }}>-</Text>;
     }
+    
+    // Debug log to see what class data we have
+    console.log('Rendering class cell with data:', {
+      subjectName: classData.subjectName,
+      roomName: classData.roomName,
+      teacherNames: classData.teacherNames,
+      programInfo: classData.programSemesterSection
+    });
 
     const classCellContentStyle = {
       fontSize: '12px',
       lineHeight: '1.3'
     };
 
+    const isSpanned = isPartOfSpanGroup(classData);
+    const isSpanMaster = classData.spanMaster === true;
+    
     return (
       <div style={classCellContentStyle}>
         <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#1677ff' }}>
           {classData.subjectName || classData.subjectCode}
+          {isSpanned && isSpanMaster && (
+            <Tag color="blue" size="small" style={{ marginLeft: '4px', fontSize: '9px' }}>
+              Multi-period
+            </Tag>
+          )}
+          {teacherViewMode && classData.timeSlot_display && (
+            <div style={{ fontSize: '10px', color: '#666', fontWeight: 'normal' }}>
+              ⏰ {classData.timeSlot_display}
+            </div>
+          )}
         </div>
         <div style={{ marginBottom: '2px' }}>
           <Tag color={getClassTypeColor(classData.classType)} size="small">
             {getClassTypeText(classData.classType)}
           </Tag>
         </div>
-        <div style={{ marginBottom: '2px', fontSize: '11px' }}>
-          👨‍🏫 {Array.isArray(classData.teacherShortNames) 
-            ? classData.teacherShortNames.join(', ')
-            : classData.teacherShortNames || 'No Teacher'}
-        </div>
+        {!teacherViewMode && (
+          <div style={{ marginBottom: '2px', fontSize: '11px' }}>
+            👨‍🏫 {Array.isArray(classData.teacherShortNames) 
+              ? classData.teacherShortNames.join(', ')
+              : classData.teacherShortNames || 'No Teacher'}
+          </div>
+        )}
         <div style={{ fontSize: '11px' }}>
           🏫 {classData.roomName || 'No Room'}
         </div>
         {classData.notes && (
           <div style={{ marginTop: '4px', fontSize: '10px', color: '#666' }}>
             📝 {classData.notes}
+          </div>
+        )}
+        {isSpanned && isSpanMaster && classData.spanId && (
+          <div style={{ marginTop: '4px', fontSize: '10px', color: '#1677ff' }}>
+            🔄 Multi-period class
           </div>
         )}
       </div>
@@ -562,7 +462,6 @@ const RoutineGrid = ({
     const isBreak = timeSlot?.isBreak;
     const classData = routineGridData[dayIndex]?.[slotIndex];
 
-    // For break slots, show simple break text
     if (isBreak) {
       return (
         <div style={{
@@ -576,7 +475,6 @@ const RoutineGrid = ({
       );
     }
 
-    // For regular slots, show class content or empty
     return (
       <div style={{ padding: '8px' }}>
         {renderClassContent(classData)}
@@ -595,7 +493,7 @@ const RoutineGrid = ({
       await routinesAPI.assignClass(programCode, semester, section, fullClassData);
       message.success('Class assigned successfully!');
       queryClient.invalidateQueries(['routine', programCode, semester, section]);
-      queryClient.invalidateQueries(['teacherSchedules']); // Refresh teacher schedules
+      queryClient.invalidateQueries(['teacherSchedules']);
       onModalClose();
     } catch (error) {
       console.error('Assign class error:', error);
@@ -603,8 +501,36 @@ const RoutineGrid = ({
     }
   };
 
+  const handleSaveSpannedClass = async (classData, slotIndexes) => {
+    try {
+      const fullClassData = {
+        ...classData,
+        dayIndex: selectedSlot.dayIndex,
+        slotIndexes: slotIndexes,
+        programCode,
+        semester,
+        section
+      };
+      
+      await routinesAPI.assignClassSpanned(fullClassData);
+      message.success(`Class assigned successfully across ${slotIndexes.length} periods!`);
+      queryClient.invalidateQueries(['routine', programCode, semester, section]);
+      queryClient.invalidateQueries(['teacherSchedules']);
+      onModalClose();
+    } catch (error) {
+      console.error('Assign spanned class error:', error);
+      
+      if (error.response?.data?.conflict) {
+        const conflict = error.response.data.conflict;
+        message.error(`Conflict in period ${conflict.slotIndex + 1}: ${conflict.type} conflict`);
+      } else {
+        message.error(error.response?.data?.message || 'Failed to assign spanned class');
+      }
+    }
+  };
+
   // Show loading or empty state
-  if (!demoMode && (!programCode || !semester || !section)) {
+  if (!teacherViewMode && !demoMode && (!programCode || !semester || !section)) {
     return (
       <Card>
         <Empty 
@@ -618,7 +544,10 @@ const RoutineGrid = ({
   if (routineLoading || timeSlotsLoading) {
     return (
       <Card>
-        <Spin tip="Loading routine..." style={{ width: '100%', textAlign: 'center', padding: '40px' }} />
+        <div style={{ width: '100%', textAlign: 'center', padding: '40px' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: '16px' }}>Loading routine...</div>
+        </div>
       </Card>
     );
   }
@@ -638,18 +567,68 @@ const RoutineGrid = ({
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Routine Grid */}
-      <Card title={demoMode ? 'BCT - Semester 1 - Section A (Demo)' : `${programCode} - Semester ${semester} - Section ${section}`}>
-        {/* Debug info */}
-        <div style={{ marginBottom: '16px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', fontSize: '12px' }}>
-          <strong>Debug Info:</strong> 
-          {demoMode ? ' Demo Mode' : ' Live Mode'} | 
-          Routine Data: {Object.keys(routine).length} days | 
-          Time Slots: {timeSlots.length} slots |
-          Grid Data: {Object.keys(routineGridData).length} days
-        </div>
+      <style jsx>{`
+        .ag-cell-merged {
+          background-color: #e6f7ff;
+          box-shadow: 0 0 0 2px #1677ff;
+          position: relative;
+          z-index: 1;
+        }
         
-        <div style={{ overflowX: 'auto' }}>
+        .ag-cell-spanned-hidden {
+          display: none;
+        }
+        
+        .span-marker {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 0; 
+          height: 0;
+          border-left: 16px solid #1677ff;
+          border-top: 16px solid #1677ff;
+          border-right: 16px solid transparent;
+          border-bottom: 16px solid transparent;
+        }
+      `}</style>
+      
+      <Card 
+        title={demoMode ? 'BCT - Semester 1 - Section A (Demo)' : 
+              teacherViewMode ? 'Weekly Schedule' : 
+              `${programCode} - Semester ${semester} - Section ${section}`}
+        extra={
+          !demoMode && !teacherViewMode && (
+            <ExcelActions
+              programCode={programCode}
+              semester={semester}
+              section={section}
+              allowImport={isEditable}
+              allowExport={true}
+              demoMode={demoMode}
+              size="small"
+              onImportSuccess={() => {
+                message.success('Routine imported successfully!');
+                queryClient.invalidateQueries(['routine', programCode, semester, section]);
+              }}
+              onImportError={(error) => {
+                message.error(error?.message || 'Failed to import routine');
+              }}
+              onExportSuccess={() => {
+                message.success('Routine exported successfully!');
+              }}
+              onExportError={(error) => {
+                message.error(error?.message || 'Failed to export routine');
+              }}
+            />
+          ) || (teacherViewMode && showExcelActions && selectedTeacher && (
+            <TeacherExcelActions
+              teacherId={selectedTeacher}
+              teacherName={selectedTeacherInfo?.name || 'Teacher'}
+            />
+          ))
+        }
+      >
+        <div style={{ overflowX: 'auto', marginTop: '7px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
             <thead>
               <tr>
@@ -720,6 +699,14 @@ const RoutineGrid = ({
                       );
                     }
 
+                    const rowSpan = calculateRowSpan(classData, routineGridData[dayIndex], timeSlot._id);
+                    
+                    if (rowSpan === 0) {
+                      return null;
+                    }
+                    
+                    const isSpanMaster = classData?.spanMaster === true;
+                    
                     return (
                       <td 
                         key={`${dayIndex}-${timeSlot._id}`} 
@@ -730,54 +717,81 @@ const RoutineGrid = ({
                           backgroundColor: classData ? getCellBackgroundColor(classData.classType) : '#ffffff',
                           height: '80px',
                           minWidth: '120px',
-                          cursor: isEditable && !demoMode ? 'pointer' : 'default'
+                          cursor: isEditable && !demoMode && !teacherViewMode ? 'pointer' : 'default',
+                          ...(isSpanMaster ? { 
+                            boxShadow: '0 0 0 2px #1677ff',
+                            position: 'relative',
+                            zIndex: 1
+                          } : {})
                         }}
-                        onClick={() => isEditable && !demoMode && handleSlotClick(dayIndex, timeSlot._id)}
+                        rowSpan={rowSpan > 1 ? rowSpan : undefined}
+                        onClick={() => isEditable && !demoMode && !teacherViewMode && handleSlotClick(dayIndex, timeSlot._id)}
+                        onDoubleClick={!teacherViewMode && onCellDoubleClicked ? 
+                          () => onCellDoubleClicked(dayIndex, timeSlot._id, classData) : 
+                          undefined}
                       >
                         <div style={{ padding: '8px', height: '100%' }}>
+                          {isSpanMaster && rowSpan > 1 && (
+                            <div className="span-marker" title={`Multi-period class (spans ${rowSpan} periods)`}></div>
+                          )}
                           {renderClassContent(classData)}
-                          {isEditable && !demoMode && classData && (
+                          {isEditable && !demoMode && !teacherViewMode && classData && (
                             <div style={{ 
                               position: 'absolute', 
-                              top: '2px', 
-                              right: '2px',
-                              display: 'flex',
-                              gap: '2px'
+                              top: '4px', 
+                              right: '4px',
+                              zIndex: 10
                             }}>
-                              <Tooltip title="Edit Class">
-                                <Button
-                                  size="small"
-                                  type="text"
-                                  icon={<EditOutlined />}
-                                  style={{ fontSize: '10px', padding: '2px' }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSlotClick(dayIndex, timeSlot._id);
-                                  }}
-                                />
-                              </Tooltip>
-                              <Popconfirm
-                                title="Clear this class?"
-                                description="This will remove the class assignment from this time slot."
-                                onConfirm={(e) => {
+                              <Button
+                                size="small"
+                                type="text"
+                                danger
+                                icon={<DeleteOutlined />}
+                                style={{ 
+                                  fontSize: '12px', 
+                                  padding: '4px', 
+                                  height: '24px',
+                                  width: '24px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                                  border: '1px solid #ff4d4f',
+                                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                                  transition: 'all 0.2s ease-in-out'
+                                }}
+                                onClick={(e) => {
                                   e.stopPropagation();
                                   handleClearClass(dayIndex, timeSlot._id);
                                 }}
-                                okText="Yes"
-                                cancelText="No"
-                              >
-                                <Button
-                                  size="small"
-                                  type="text"
-                                  danger
-                                  icon={<DeleteOutlined />}
-                                  style={{ fontSize: '10px', padding: '2px' }}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              </Popconfirm>
+                                title={classData?.spanId ? "Clear all periods of this class" : "Clear this class"}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#ff4d4f';
+                                  e.currentTarget.style.color = '#fff';
+                                  e.currentTarget.style.transform = 'scale(1.1)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                                  e.currentTarget.style.color = '#ff4d4f';
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                }}
+                              />
                             </div>
                           )}
-                          {isEditable && !demoMode && !classData && (
+                          {/* Show program-semester-section in teacher view mode */}
+                          {teacherViewMode && classData && classData.programSemesterSection && (
+                            <div style={{ 
+                              fontSize: '10px', 
+                              color: '#666', 
+                              marginTop: '4px',
+                              borderTop: '1px dashed #ddd',
+                              paddingTop: '2px'
+                            }}>
+                              📚 {classData.programSemesterSection}
+                            </div>
+                          )}
+                          {isEditable && !demoMode && !teacherViewMode && !classData && (
                             <div style={{ 
                               height: '100%', 
                               display: 'flex', 
@@ -802,20 +816,21 @@ const RoutineGrid = ({
         </div>
       </Card>
 
-      {/* Assign Class Modal */}
-      <AssignClassModal
-        visible={assignModalVisible}
-        onCancel={onModalClose}
-        onSave={handleSaveClass}
-        programCode={programCode}
-        semester={semester}
-        section={section}
-        dayIndex={selectedSlot.dayIndex}
-        slotIndex={selectedSlot.slotIndex}
-        timeSlots={timeSlots}
-        existingClass={existingClass}
-        loading={clearClassMutation.isLoading}
-      />
+      {!teacherViewMode && (
+        <AssignClassModal
+          visible={assignModalVisible}
+          onCancel={onModalClose}
+          onSave={handleSaveClass}
+          programCode={programCode}
+          semester={semester}
+          section={section}
+          dayIndex={selectedSlot.dayIndex}
+          slotIndex={selectedSlot.slotIndex}
+          timeSlots={timeSlots}
+          existingClass={existingClass}
+          loading={clearClassMutation.isLoading}
+        />
+      )}
     </Space>
   );
 };

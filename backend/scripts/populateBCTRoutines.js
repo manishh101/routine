@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 require('../config/db')();
 
 // Import models
@@ -9,7 +9,7 @@ const Teacher = require('../models/Teacher');
 const Room = require('../models/Room');
 const TimeSlotDefinition = require('../models/TimeSlot');
 const ProgramSemester = require('../models/ProgramSemester');
-const Class = require('../models/Class');
+const RoutineSlot = require('../models/RoutineSlot');
 
 const populateBCTRoutines = async () => {
   try {
@@ -17,7 +17,8 @@ const populateBCTRoutines = async () => {
 
     // Clear existing routine slots for BCT Semesters 1-4
     console.log('🧹 Clearing existing BCT routine slots for semesters 1-4...');
-    await Class.deleteMany({ 
+    await RoutineSlot.deleteMany({ 
+      programCode: 'BCT', 
       semester: { $in: [1, 2, 3, 4] },
       section: { $in: ['AB', 'CD'] } 
     });
@@ -275,17 +276,39 @@ const populateBCTRoutines = async () => {
           if (classType === 'P') type = 'practical';
           else if (classType === 'T') type = 'tutorial';
           
+          // Find day index
+          const dayMap = {
+            'sunday': 0, 
+            'monday': 1, 
+            'tuesday': 2, 
+            'wednesday': 3, 
+            'thursday': 4, 
+            'friday': 5, 
+            'saturday': 6
+          };
+          
+          // No need to redefine - use the existing classType variable
+          // Convert legacy type names to our schema format if needed
+          if (type === 'practical' && classType !== 'P') classType = 'P';
+          else if (type === 'tutorial' && classType !== 'T') classType = 'T';
+          
           const routineSlot = {
-            programId: bctProgram._id,
-            subjectId: dbSubject._id,
-            teacherId: teacher._id,
-            day: day.toLowerCase(),
-            startTime: timeSlot.startTime,
-            endTime: timeSlot.endTime,
-            roomNumber: room.name,
-            type: type,
+            programCode: 'BCT',
             semester: semester,
-            section: section
+            section: section,
+            dayIndex: dayMap[day.toLowerCase()],
+            slotIndex: timeSlot.sortOrder || timeSlots.findIndex(t => t._id.toString() === timeSlot._id.toString()),
+            subjectId: dbSubject._id,
+            teacherIds: [teacher._id],
+            roomId: room._id,
+            classType: classType,
+            notes: type !== 'lecture' ? `${dbSubject.name} ${type}` : '',
+            // Denormalized display fields
+            subjectName_display: dbSubject.name,
+            subjectCode_display: dbSubject.code,
+            teacherShortNames_display: [teacher.shortName || teacher.name.split(' ').map(n => n[0]).join('')],
+            roomName_display: room.name,
+            timeSlot_display: `${timeSlot.startTime} - ${timeSlot.endTime}`
           };
           
           routineSlots.push(routineSlot);
@@ -313,7 +336,7 @@ const populateBCTRoutines = async () => {
     // Insert all routine slots
     console.log(`\n💾 Inserting ${allRoutineSlots.length} routine slots...`);
     console.log('Sample routine slot:', JSON.stringify(allRoutineSlots[0], null, 2));
-    await Class.insertMany(allRoutineSlots);
+    await RoutineSlot.insertMany(allRoutineSlots);
     
     console.log('✅ Successfully populated BCT routines for semesters 1-4!\n');
     

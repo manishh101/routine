@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Dropdown, Avatar, Typography, Space, Tag } from 'antd';
 import {
@@ -13,7 +13,8 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   HomeOutlined,
-  ClockCircleOutlined
+  ClockCircleOutlined,
+  FileExcelOutlined
 } from '@ant-design/icons';
 import useAuthStore from '../contexts/authStore';
 
@@ -24,15 +25,62 @@ const Layout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user, logout, setUser } = useAuthStore();
+
+  // Sync Zustand user state with localStorage on mount and storage events
+  useEffect(() => {
+    const syncUser = () => {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const userData = JSON.parse(userStr);
+          setUser(userData);
+        } catch (e) {
+          console.error('Error parsing user data:', e);
+          // Clear corrupted user data
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+        }
+      }
+    };
+    
+    syncUser();
+    window.addEventListener('storage', syncUser);
+    return () => window.removeEventListener('storage', syncUser);
+  }, [setUser]);
 
   // Public menu items (available to everyone)
   const publicMenuItems = [
-    { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
-    { key: '/routine', icon: <CalendarOutlined />, label: 'Class Routine' },
-    { key: '/teacher-schedule', icon: <UserOutlined />, label: 'Teacher Schedule' },
-    { key: '/teacher-routine', icon: <TeamOutlined />, label: 'Teacher Routine' },
-    { key: '/routine-grid-demo', icon: <CalendarOutlined />, label: '📋 Routine Grid Demo' },
+    { 
+      key: '/', 
+      icon: <DashboardOutlined />, 
+      label: 'Dashboard',
+      title: collapsed ? 'Dashboard' : undefined
+    },
+    { 
+      key: '/program-routine', 
+      icon: <CalendarOutlined />, 
+      label: 'Class Routine',
+      title: collapsed ? 'Class Routine' : undefined
+    },
+    { 
+      key: '/teacher-routine', 
+      icon: <TeamOutlined />, 
+      label: 'Teacher Schedule',
+      title: collapsed ? 'Teacher Schedule' : undefined
+    },
+    { 
+      key: '/excel-demo', 
+      icon: <FileExcelOutlined />, 
+      label: 'Excel Demo',
+      title: collapsed ? 'Excel Demo' : undefined
+    },
+    { 
+      key: '/teacher-excel-demo', 
+      icon: <FileExcelOutlined />, 
+      label: 'Teacher Excel Demo',
+      title: collapsed ? 'Teacher Excel Demo' : undefined
+    },
   ];
 
   // Admin-only menu items
@@ -40,16 +88,60 @@ const Layout = () => {
     { type: 'divider' },
     { 
       key: 'admin-section', 
-      label: 'Admin Panel', 
+      label: collapsed ? '' : 'Admin Panel', 
       type: 'group',
-      style: { color: '#1890ff', fontWeight: 'bold' }
+      style: { 
+        color: '#667eea', 
+        fontWeight: 600,
+        fontSize: '12px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        margin: collapsed ? '8px 0 4px 0' : '16px 0 8px 0',
+        display: collapsed ? 'none' : 'block'
+      }
     },
-    { key: '/teachers', icon: <TeamOutlined />, label: 'Manage Teachers' },
-    { key: '/programs', icon: <BookOutlined />, label: 'Manage Programs' },
-    { key: '/subjects', icon: <ReadOutlined />, label: 'Manage Subjects' },
-    { key: '/classes', icon: <ScheduleOutlined />, label: 'Manage Classes' },
-    { key: '/rooms', icon: <HomeOutlined />, label: 'Manage Rooms' },
-    { key: '/timeslots', icon: <ClockCircleOutlined />, label: 'Manage Time Slots' },
+    { 
+      key: '/program-routine-manager', 
+      icon: <ScheduleOutlined />, 
+      label: 'Routine Manager',
+      title: collapsed ? 'Routine Manager' : undefined
+    },
+    { 
+      key: '/teachers-manager', 
+      icon: <TeamOutlined />, 
+      label: 'Teachers',
+      title: collapsed ? 'Teachers' : undefined
+    },
+    { 
+      key: '/programs-manager', 
+      icon: <BookOutlined />, 
+      label: 'Programs',
+      title: collapsed ? 'Programs' : undefined
+    },
+    { 
+      key: '/subjects-manager', 
+      icon: <ReadOutlined />, 
+      label: 'Subjects',
+      title: collapsed ? 'Subjects' : undefined
+    },
+    { 
+      key: '/rooms-manager', 
+      icon: <HomeOutlined />, 
+      label: 'Rooms',
+      title: collapsed ? 'Rooms' : undefined
+    },
+    { 
+      key: '/timeslots-manager', 
+      icon: <ClockCircleOutlined />, 
+      label: 'Time Slots',
+      title: collapsed ? 'Time Slots' : undefined
+    },
+    { 
+      key: '/excel-demo-admin', 
+      icon: <FileExcelOutlined />, 
+      label: 'Excel Demo (Admin)',
+      title: collapsed ? 'Excel Demo (Admin)' : undefined
+    },
   ];
 
   // Combine menu items based on user role
@@ -67,7 +159,13 @@ const Layout = () => {
       key: '/admin/login',
       icon: <UserOutlined />,
       label: 'Admin Login',
-      style: { backgroundColor: '#f0f9ff', color: '#1890ff' }
+      style: { 
+        background: 'linear-gradient(135deg, #667eea20 0%, #764ba220 100%)', 
+        color: '#667eea',
+        fontWeight: 500,
+        margin: '8px',
+        borderRadius: '8px'
+      }
     });
   }
 
@@ -83,21 +181,140 @@ const Layout = () => {
   const userMenuItems = user ? [
     {
       key: 'profile',
-      icon: <UserOutlined />,
+      icon: <UserOutlined style={{ color: '#667eea', fontSize: '16px' }} />,
       label: (
-        <Space direction="vertical" size={0} align="start">
-          <Text strong>{user.name}</Text>
-          <Text type="secondary" style={{ fontSize: '0.85em' }}>{user.role}</Text>
-        </Space>
+        <div style={{ padding: '12px 8px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginBottom: '8px'
+          }}>
+            <Avatar 
+              size={48}
+              icon={<UserOutlined />} 
+              src={user.avatarUrl}
+              style={{
+                background: user?.role === 'admin' 
+                  ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                  : 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)',
+                border: '3px solid white',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+              }}
+            />
+            <div>
+              <div style={{
+                fontWeight: 700,
+                color: '#1f2937',
+                fontSize: '16px',
+                marginBottom: '4px',
+                letterSpacing: '-0.01em'
+              }}>
+                {user.name || 'Admin User'}
+              </div>
+              <div style={{
+                fontSize: '13px',
+                color: '#6b7280',
+                marginBottom: '6px'
+              }}>
+                {user.email || 'admin@example.com'}
+              </div>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 8px',
+                background: user?.role === 'admin' 
+                  ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                  : 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)',
+                borderRadius: '12px',
+                fontSize: '11px',
+                color: 'white',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                {user?.role === 'admin' && (
+                  <span style={{
+                    width: '6px',
+                    height: '6px',
+                    background: '#00d4aa',
+                    borderRadius: '50%',
+                    display: 'inline-block'
+                  }} />
+                )}
+                {user.role || 'User'}
+              </div>
+            </div>
+          </div>
+          <div style={{
+            padding: '8px 12px',
+            background: 'rgba(102, 126, 234, 0.05)',
+            borderRadius: '8px',
+            border: '1px solid rgba(102, 126, 234, 0.1)',
+            fontSize: '12px',
+            color: '#667eea',
+            textAlign: 'center',
+            fontWeight: 500
+          }}>
+            🎉 Welcome back! You're signed in as {user?.role === 'admin' ? 'Administrator' : 'User'}
+          </div>
+        </div>
       ),
       disabled: true,
+      style: {
+        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%)',
+        borderRadius: '16px',
+        margin: '0 4px 8px 4px',
+        border: '1px solid rgba(102, 126, 234, 0.08)'
+      }
     },
-    { type: 'divider' },
+    { 
+      type: 'divider',
+      style: {
+        margin: '8px 12px',
+        borderColor: 'rgba(102, 126, 234, 0.1)'
+      }
+    },
     {
       key: 'logout',
-      icon: <LogoutOutlined />,
-      label: 'Logout',
+      icon: <LogoutOutlined style={{ color: '#ffffff', fontSize: '16px' }} />,
+      label: (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '4px 0'
+        }}>
+          <div>
+            <div style={{ 
+              color: '#ffffff', 
+              fontWeight: 600,
+              fontSize: '14px',
+              marginBottom: '2px'
+            }}>
+              Sign Out
+            </div>
+            <div style={{
+              fontSize: '11px',
+              color: 'rgba(255, 255, 255, 0.8)',
+              fontWeight: 400
+            }}>
+              You'll be redirected to login
+            </div>
+          </div>
+        </div>
+      ),
       onClick: handleLogout,
+      style: {
+        borderRadius: '12px',
+        margin: '4px 8px 4px 8px',
+        padding: '8px 12px',
+        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        border: 'none',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)'
+      }
     },
   ] : [];
 
@@ -107,80 +324,180 @@ const Layout = () => {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
+        trigger={null}
         theme="light"
-        width={250}
+        width={240}
+        collapsedWidth={72}
         style={{
-          boxShadow: '2px 0 8px 0 rgba(29,35,41,.05)',
+          boxShadow: '2px 0 5px rgba(0, 0, 0, 0.1)',
           position: 'fixed',
           height: '100vh',
           left: 0,
-          top: 0,
+          top: 56, // Start below header like YouTube
           bottom: 0,
-          zIndex: 1001, // Ensure sider is above content on overlap
+          zIndex: 1000,
+          background: '#ffffff',
+          borderRight: '1px solid #e5e5e5',
+          transition: 'all 0.2s ease',
         }}
       >
-        <div style={{
-          height: '64px',
-          padding: '16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          borderBottom: '1px solid #f0f0f0',
-        }}>
-          <ScheduleOutlined style={{ fontSize: '28px', color: '#1677ff' }} />
-          {!collapsed && (
-            <Title level={4} style={{ margin: '0 0 0 12px', color: '#1677ff', whiteSpace: 'nowrap' }}>
-              Routine MS
-            </Title>
-          )}
-        </div>
         <Menu
           mode="inline"
           selectedKeys={[location.pathname]}
+          defaultSelectedKeys={[location.pathname]}
           items={menuItems}
           onClick={handleMenuClick}
-          style={{ borderRight: 0, height: 'calc(100vh - 64px)', overflowY: 'auto' }}
+          inlineCollapsed={collapsed}
+          style={{ 
+            borderRight: 0, 
+            height: '100%', 
+            overflowY: 'auto',
+            background: 'transparent',
+            padding: '8px 0',
+          }}
         />
       </Sider>
-      <AntLayout style={{ marginLeft: collapsed ? 80 : 250, transition: 'margin-left 0.2s' }}>
+      <AntLayout style={{ 
+        marginLeft: collapsed ? 72 : 240, 
+        transition: 'margin-left 0.2s ease' 
+      }}>
         <Header style={{
-          padding: '0 24px',
-          background: '#fff',
+          height: '56px',
+          padding: '0 16px',
+          background: '#ffffff',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          boxShadow: '0 2px 8px 0 rgba(29,35,41,.05)',
-          position: 'sticky',
+          boxShadow: '0 1px 0 rgba(0, 0, 0, 0.1)',
+          position: 'fixed',
           top: 0,
-          zIndex: 1000,
+          left: 0,
+          right: 0,
+          zIndex: 1001,
+          borderBottom: '1px solid #e5e5e5',
         }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
+            {/* YouTube-style hamburger menu */}
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed(!collapsed)}
-              style={{ fontSize: '18px', width: 48, height: 48 }}
+              style={{ 
+                fontSize: '20px', 
+                width: 40, 
+                height: 40,
+                borderRadius: '50%',
+                color: '#606060',
+                background: 'transparent',
+                border: 'none',
+                marginRight: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = 'rgba(0, 0, 0, 0.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = 'transparent';
+              }}
             />
-            <Title level={3} style={{ margin: '0 0 0 16px', color: '#262626', whiteSpace: 'nowrap' }}>
-              {menuItems.find(item => item.key === location.pathname)?.label || 'BE Routine Management'}
-              {user?.role === 'admin' && (
-                <Tag color="blue" style={{ marginLeft: '12px', fontSize: '12px' }}>
-                  Admin Mode
-                </Tag>
-              )}
-            </Title>
+            
+            {/* YouTube-style logo */}
+            <div 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                cursor: 'pointer'
+              }}
+              onClick={() => navigate('/')}
+            >
+              <ScheduleOutlined style={{ 
+                fontSize: '28px', 
+                color: '#667eea',
+                marginRight: '8px'
+              }} />
+              <span style={{ 
+                fontSize: '20px',
+                fontWeight: 600,
+                color: '#333',
+                letterSpacing: '-0.01em',
+                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+              }}>
+                Routine MS
+              </span>
+            </div>
           </div>
           {user ? (
             <Dropdown
-              menu={{ items: userMenuItems }}
+              menu={{ 
+                items: [
+                  {
+                    key: 'signout',
+                    icon: <LogoutOutlined style={{ color: '#6b7280', fontSize: '16px' }} />,
+                    label: (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '8px 4px'
+                      }}>
+                        <div>
+                          <div style={{ 
+                            color: '#1f2937', 
+                            fontWeight: 600,
+                            fontSize: '14px',
+                            marginBottom: '2px'
+                          }}>
+                            Sign Out
+                          </div>
+                          <div style={{
+                            fontSize: '11px',
+                            color: '#6b7280',
+                            fontWeight: 400
+                          }}>
+                            You'll be redirected to login
+                          </div>
+                        </div>
+                      </div>
+                    ),
+                    onClick: handleLogout,
+                    style: {
+                      borderRadius: '12px',
+                      margin: '8px',
+                      padding: '12px',
+                      background: '#f9fafb',
+                      border: '1px solid #e5e7eb',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                    }
+                  }
+                ]
+              }}
               placement="bottomRight"
               trigger={['click']}
+              overlayStyle={{
+                borderRadius: '12px',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                border: '1px solid #e5e5e5',
+                background: '#ffffff',
+                overflow: 'hidden',
+                minWidth: '200px'
+              }}
             >
-              <Button type="text" style={{ height: 'auto', padding: '8px' }}>
-                <Space>
-                  <Avatar icon={<UserOutlined />} src={user.avatarUrl} />
-                  {!collapsed && <Text strong style={{display: 'inline-block', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>{user.name}</Text>}
-                </Space>
+              <Button
+                type="primary"
+                icon={<LogoutOutlined />}
+                style={{
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+                  border: 'none',
+                  fontWeight: 500,
+                  boxShadow: '0 4px 12px rgba(107, 114, 128, 0.4)',
+                  height: '40px'
+                }}
+              >
+                Admin Logout
               </Button>
             </Dropdown>
           ) : (
@@ -188,23 +505,33 @@ const Layout = () => {
               type="primary"
               icon={<UserOutlined />}
               onClick={() => navigate('/admin/login')}
+              style={{
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none',
+                fontWeight: 500,
+                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
+                height: '40px'
+              }}
             >
               Admin Login
             </Button>
           )}
         </Header>
         <Content style={{
-          padding: '24px',
-          background: '#f0f2f5',
-          minHeight: 'calc(100vh - 64px)', // 64px for header
+          padding: '20px',
+          background: '#f9f9f9',
+          minHeight: 'calc(100vh - 56px)',
+          marginTop: '56px',
           overflow: 'auto',
         }}>
           <div style={{
             padding: '24px',
             background: '#ffffff',
             borderRadius: '8px',
-            boxShadow: '0 1px 4px rgba(0, 0, 0, 0.08)',
-            minHeight: '100%', // Ensure this div takes full height of Content's padded area
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
+            minHeight: 'calc(100vh - 152px)',
+            border: '1px solid #e5e5e5',
           }}>
             <Outlet />
           </div>

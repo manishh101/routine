@@ -28,7 +28,8 @@ import {
   programSemestersAPI, 
   teachersAPI, 
   roomsAPI, 
-  routinesAPI 
+  routinesAPI,
+  subjectsAPI
 } from '../services/api';
 
 const { Title, Text } = Typography;
@@ -53,6 +54,8 @@ const AssignClassModal = ({
   const [checking, setChecking] = useState(false);
   const [availableTeachers, setAvailableTeachers] = useState([]);
   const [availableRooms, setAvailableRooms] = useState([]);
+  const [filteredTeachers, setFilteredTeachers] = useState([]);
+  const [currentClassType, setCurrentClassType] = useState(null);
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const selectedTimeSlot = timeSlots.find(slot => slot._id === slotIndex);
@@ -60,10 +63,14 @@ const AssignClassModal = ({
   // Fetch subjects for this program-semester
   const { 
     data: subjectsData, 
-    isLoading: subjectsLoading 
+    isLoading: subjectsLoading,
+    error: subjectsError 
   } = useQuery({
     queryKey: ['programSemesterSubjects', programCode, semester],
-    queryFn: () => programSemestersAPI.getSubjectsForSemester(programCode, semester),
+    queryFn: () => {
+      console.log('AssignClassModal - Fetching subjects for:', { programCode, semester });
+      return subjectsAPI.getSubjectsByProgramAndSemester(programCode, semester);
+    },
     enabled: !!(programCode && semester && visible),
   });
 
@@ -90,10 +97,108 @@ const AssignClassModal = ({
   const subjects = subjectsData?.data || [];
   const teachers = teachersData?.data || [];
   const rooms = roomsData?.data?.data || [];
+  
+  // Debug subjects data
+  console.log('AssignClassModal - Subjects Debug:', {
+    programCode,
+    semester,
+    visible,
+    subjectsData: subjectsData,
+    subjects: subjects,
+    subjectsLoading: subjectsLoading,
+    subjectsError: subjectsError,
+    subjectsLength: subjects.length
+  });
+  
+  // Debug teachers data
+  console.log('AssignClassModal - Teachers Debug:', {
+    teachersData: teachersData,
+    teachers: teachers,
+    teachersLoading: teachersLoading,
+    teachersLength: teachers.length,
+    visible: visible
+  });
+
+  // Filter teachers based on availability and class type
+  const filterTeachersBasedOnClassType = async (classType) => {
+    setCurrentClassType(classType);
+    
+    // For lab/practical classes, show all teachers
+    if (classType === 'P') {
+      console.log('Lab/Practical class - showing all teachers');
+      setFilteredTeachers(teachers.map(teacher => ({
+        ...teacher,
+        isAvailable: true,
+        reason: 'Lab allows multiple teachers'
+      })));
+      return;
+    }
+
+    // For lecture/tutorial, check availability for current time slot
+    if (classType === 'L' || classType === 'T') {
+      console.log('Lecture/Tutorial class - checking teacher availability for time slot');
+      setChecking(true);
+      
+      try {
+        const availabilityChecks = teachers.map(async (teacher) => {
+          try {
+            const response = await routinesAPI.checkTeacherAvailability(teacher._id, dayIndex, slotIndex);
+            return {
+              ...teacher,
+              isAvailable: response.data.available,
+              conflictDetails: response.data.conflictDetails,
+              reason: response.data.available ? 'Available' : 'Busy in this slot'
+            };
+          } catch (error) {
+            console.warn(`Error checking availability for teacher ${teacher.fullName}:`, error);
+            return {
+              ...teacher,
+              isAvailable: true,
+              reason: 'Could not verify (assumed available)'
+            };
+          }
+        });
+
+        const teacherAvailability = await Promise.all(availabilityChecks);
+        setFilteredTeachers(teacherAvailability);
+        
+        const availableCount = teacherAvailability.filter(t => t.isAvailable).length;
+        console.log(`Teacher availability check complete: ${availableCount}/${teachers.length} available`);
+        
+      } catch (error) {
+        console.error('Error checking teacher availability:', error);
+        // Fallback to showing all teachers if availability check fails
+        setFilteredTeachers(teachers.map(teacher => ({
+          ...teacher,
+          isAvailable: true,
+          reason: 'Availability check failed'
+        })));
+      }
+      
+      setChecking(false);
+    }
+  };
+
+  // Update filtered teachers when teachers data changes or modal opens
+  useEffect(() => {
+    if (visible && teachers.length > 0) {
+      if (currentClassType) {
+        filterTeachersBasedOnClassType(currentClassType);
+      } else {
+        // Initially show all teachers until class type is selected
+        setFilteredTeachers(teachers.map(teacher => ({
+          ...teacher,
+          isAvailable: true,
+          reason: 'Select class type to check availability'
+        })));
+      }
+    }
+  }, [teachers, visible, dayIndex, slotIndex]);
 
   // Set form values when editing existing class
   useEffect(() => {
     if (existingClass && visible) {
+      console.log('Modal opened with existing class:', existingClass);
       form.setFieldsValue({
         subjectId: existingClass.subjectId,
         teacherIds: existingClass.teacherIds || [],
@@ -101,10 +206,52 @@ const AssignClassModal = ({
         classType: existingClass.classType,
         notes: existingClass.notes || ''
       });
+      // Set the class type to trigger teacher filtering
+      setCurrentClassType(existingClass.classType);
+      if (existingClass.classType) {
+        filterTeachersBasedOnClassType(existingClass.classType);
+      }
     } else if (visible) {
+      console.log('Modal opened for new class');
       form.resetFields();
+      setCurrentClassType(null);
+      setFilteredTeachers(teachers.map(teacher => ({
+        ...teacher,
+        isAvailable: true,
+        reason: 'Select class type to check availability'
+      })));
     }
-  }, [existingClass, visible, form]);
+  }, [existingClass, visible, form, teachers]);
+
+  // Check for room conflicts
+  const checkRoomConflicts = async (values) => {
+    if (!values.roomId) {
+      setConflicts([]);
+      return;
+    }
+
+    setChecking(true);
+    try {
+      const response = await routinesAPI.checkRoomAvailability(values.roomId, dayIndex, slotIndex);
+      
+      if (!response.data.available) {
+        const roomName = rooms.find(r => r._id === values.roomId)?.name || 'Unknown Room';
+        setConflicts([{
+          type: 'room',
+          id: values.roomId,
+          name: roomName,
+          available: false,
+          conflictDetails: response.data.conflictDetails
+        }]);
+      } else {
+        setConflicts([]);
+      }
+    } catch (error) {
+      console.error('Error checking room availability:', error);
+      setConflicts([]);
+    }
+    setChecking(false);
+  };
 
   // Check for conflicts when form values change
   const checkConflicts = async (values) => {
@@ -186,8 +333,23 @@ const AssignClassModal = ({
   };
 
   const handleFormChange = (changedValues, allValues) => {
-    // Debounce conflict checking
-    const timeoutId = setTimeout(() => checkConflicts(allValues), 500);
+    // If class type changed, update teacher filtering
+    if (changedValues.classType !== undefined) {
+      console.log('Class type changed to:', changedValues.classType);
+      filterTeachersBasedOnClassType(changedValues.classType);
+      
+      // Clear teacher selection when switching class types to avoid confusion
+      if (changedValues.classType !== currentClassType) {
+        form.setFieldsValue({ teacherIds: [] });
+      }
+    }
+    
+    // Debounce conflict checking for room availability
+    const timeoutId = setTimeout(() => {
+      if (allValues.roomId) {
+        checkRoomConflicts(allValues);
+      }
+    }, 500);
     return () => clearTimeout(timeoutId);
   };
 
@@ -354,35 +516,83 @@ const AssignClassModal = ({
             <Col span={12}>
               <Form.Item
                 name="teacherIds"
-                label={<Space><UserOutlined />Teacher(s)</Space>}
+                label={
+                  <Space>
+                    <UserOutlined />
+                    Teacher(s)
+                    {currentClassType === 'P' && (
+                      <Tag color="green" size="small">Multiple allowed for labs</Tag>
+                    )}
+                    {(currentClassType === 'L' || currentClassType === 'T') && (
+                      <Tag color="blue" size="small">Availability checked</Tag>
+                    )}
+                  </Space>
+                }
                 rules={[{ required: true, message: 'Please select at least one teacher' }]}
+                help={
+                  currentClassType === 'P' 
+                    ? "For practical/lab classes, you can assign multiple teachers"
+                    : currentClassType 
+                      ? "Only available teachers are shown for lecture/tutorial classes"
+                      : "Select class type first to see teacher availability"
+                }
               >
                 <Select
                   mode="multiple"
-                  placeholder="Select teacher(s)"
-                  loading={teachersLoading}
+                  placeholder={
+                    currentClassType === 'P' 
+                      ? "Select teacher(s) - Multiple allowed for labs"
+                      : currentClassType
+                        ? "Select available teacher(s)"
+                        : "Select class type first"
+                  }
+                  loading={teachersLoading || checking}
                   showSearch
+                  disabled={!currentClassType}
                   filterOption={(input, option) =>
                     option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
                   }
+                  maxTagCount="responsive"
                 >
-                  {(availableTeachers.length > 0 ? availableTeachers : teachers).map(teacher => (
-                    <Option 
-                      key={teacher._id} 
-                      value={teacher._id}
-                      disabled={availableTeachers.length > 0 && !teacher.isAvailable}
-                    >
-                      <Space>
-                        {teacher.fullName} ({teacher.shortName})
-                        {availableTeachers.length > 0 && !teacher.isAvailable && (
-                          <Tag color="red" size="small">Busy</Tag>
+                  {filteredTeachers.map(teacher => {
+                    const isDisabled = currentClassType !== 'P' && !teacher.isAvailable;
+                    
+                    return (
+                      <Option 
+                        key={teacher._id} 
+                        value={teacher._id}
+                        disabled={isDisabled}
+                        style={{
+                          opacity: isDisabled ? 0.5 : 1
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>
+                            <strong>{teacher.fullName}</strong> ({teacher.shortName})
+                            {teacher.department && (
+                              <Text type="secondary" style={{ marginLeft: 8, fontSize: '12px' }}>
+                                {teacher.department}
+                              </Text>
+                            )}
+                          </span>
+                          <div>
+                            {currentClassType === 'P' ? (
+                              <Tag color="green" size="small">Available</Tag>
+                            ) : teacher.isAvailable ? (
+                              <Tag color="green" size="small">Free</Tag>
+                            ) : (
+                              <Tag color="red" size="small">Busy</Tag>
+                            )}
+                          </div>
+                        </div>
+                        {!teacher.isAvailable && currentClassType !== 'P' && (
+                          <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
+                            {teacher.reason}
+                          </div>
                         )}
-                        {availableTeachers.length > 0 && teacher.isAvailable && (
-                          <Tag color="green" size="small">Available</Tag>
-                        )}
-                      </Space>
-                    </Option>
-                  ))}
+                      </Option>
+                    );
+                  })}
                 </Select>
               </Form.Item>
             </Col>

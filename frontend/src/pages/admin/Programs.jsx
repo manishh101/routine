@@ -198,7 +198,7 @@ const Programs = () => {
       {/* Statistics Cards */}
       <Row gutter={[24, 24]}>
         <Col xs={24} sm={12} md={8}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Total Programs</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#52c41a', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : programs.length}
@@ -206,7 +206,7 @@ const Programs = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Active Programs</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#1677ff', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : programs.filter(p => p.isActive !== false).length}
@@ -214,7 +214,7 @@ const Programs = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
-          <Card bordered={false} style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ textAlign: 'center', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <Text type="secondary" style={{ fontSize: '16px' }}>Program Levels</Text>
             <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#722ed1', margin: '8px 0' }}>
               {isLoading ? <Spin size="small" /> : (new Set(programs.map(p => p.level).filter(Boolean)).size || (programs.length > 0 ? 1 : 0))}
@@ -224,7 +224,7 @@ const Programs = () => {
       </Row>
 
       {/* Programs Table */}
-      <Card style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} bodyStyle={{ padding: 0 }}>
+      <Card style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={programs}

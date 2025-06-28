@@ -1,29 +1,48 @@
 const mongoose = require('mongoose');
 
+// Get MongoDB connection string
+const getMongoURI = () => {
+  // Use environment variables - prioritize local development
+  const mongoURI = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.MONGODB_ATLAS_URI;
+
+  if (!mongoURI) {
+    throw new Error('MongoDB URI not found. Please set MONGODB_URI, MONGODB_ATLAS_URI, or MONGO_URI in environment variables.');
+  }
+
+  return mongoURI.trim();
+};
+
 const connectDB = async () => {
   try {
-    const mongoURI = process.env.MONGODB_URI;
-    if (!mongoURI) {
-      throw new Error('MongoDB connection string not found in environment variables');
-    }
+    const mongoURI = getMongoURI();
+    console.log('Attempting to connect with URI:', mongoURI);
     
-    console.log('Connecting to MongoDB Atlas...');
-    const conn = await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
+    mongoose.connection.on('error', err => {
+      console.error('MongoDB connection error:', err);
     });
-    
-    console.log(`MongoDB Atlas Connected: ${conn.connection.host}`);
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('MongoDB disconnected. Attempting to reconnect...');
+    });
+
+    mongoose.connection.on('connected', () => {
+      console.log('✅ MongoDB connected successfully');
+    });
+
+    const conn = await mongoose.connect(mongoURI, {
+      socketTimeoutMS: 60000,
+      connectTimeoutMS: 60000,
+      serverSelectionTimeoutMS: 60000,
+      retryWrites: true,
+      w: 'majority',
+      maxPoolSize: 10,
+      minPoolSize: 2,
+    });
+
     return conn;
-  } catch (error) {
-    console.error('MongoDB Connection Error:', error.message);
-    console.log('Note: Make sure your MongoDB Atlas connection string is correct and your IP is whitelisted');
-    
-    // Don't exit in development, just log the error
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
-    }
-    throw error; // Re-throw to allow handling in the application
+  } catch (err) {
+    console.error('❌ MongoDB connection failed:', err);
+    throw err; // Re-throw to be handled by the caller
   }
 };
 

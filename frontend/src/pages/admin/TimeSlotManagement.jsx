@@ -25,7 +25,7 @@ import {
   SettingOutlined
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { timeslotsAPI } from '../../services/api';
+import { timeSlotsAPI } from '../../services/api';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -44,12 +44,12 @@ const TimeSlotManagement = () => {
     error 
   } = useQuery({
     queryKey: ['timeSlots'],
-    queryFn: () => timeslotsAPI.getTimeSlots()
+    queryFn: () => timeSlotsAPI.getTimeSlots()
   });
 
   // Create time slot mutation
   const createMutation = useMutation({
-    mutationFn: (timeSlotData) => timeslotsAPI.createTimeSlot(timeSlotData),
+    mutationFn: (timeSlotData) => timeSlotsAPI.createTimeSlot(timeSlotData),
     onSuccess: () => {
       message.success('Time slot created successfully');
       queryClient.invalidateQueries(['timeSlots']);
@@ -63,7 +63,7 @@ const TimeSlotManagement = () => {
 
   // Update time slot mutation
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => timeslotsAPI.updateTimeSlot(id, data),
+    mutationFn: ({ id, data }) => timeSlotsAPI.updateTimeSlot(id, data),
     onSuccess: () => {
       message.success('Time slot updated successfully');
       queryClient.invalidateQueries(['timeSlots']);
@@ -78,7 +78,7 @@ const TimeSlotManagement = () => {
 
   // Delete time slot mutation
   const deleteMutation = useMutation({
-    mutationFn: (id) => timeslotsAPI.deleteTimeSlot(id),
+    mutationFn: (id) => timeSlotsAPI.deleteTimeSlot(id),
     onSuccess: () => {
       message.success('Time slot deleted successfully');
       queryClient.invalidateQueries(['timeSlots']);
@@ -90,7 +90,7 @@ const TimeSlotManagement = () => {
 
   // Initialize default time slots mutation
   const initializeMutation = useMutation({
-    mutationFn: () => timeslotsAPI.initializeTimeSlots(),
+    mutationFn: () => timeSlotsAPI.initializeTimeSlots(),
     onSuccess: () => {
       message.success('Default time slots initialized successfully');
       queryClient.invalidateQueries(['timeSlots']);
