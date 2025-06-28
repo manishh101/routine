@@ -357,12 +357,61 @@ const AssignClassModal = ({
     try {
       const values = await form.validateFields();
       
-      if (conflicts.length > 0) {
+      console.log('Form submission - Debug:', {
+        values,
+        conflicts,
+        currentClassType,
+        selectedTeachers: values.teacherIds?.map(id => 
+          filteredTeachers.find(t => t._id === id)?.fullName
+        )
+      });
+      
+      // For practical classes, we allow conflicts since multiple teachers can work together
+      if (currentClassType === 'P') {
+        console.log('Lab/Practical class - proceeding without conflict check');
+        onSave(values);
+        return;
+      }
+      
+      // For lecture/tutorial, check if any selected teachers are unavailable
+      const selectedUnavailableTeachers = values.teacherIds?.filter(teacherId => {
+        const teacher = filteredTeachers.find(t => t._id === teacherId);
+        return teacher && !teacher.isAvailable;
+      }) || [];
+      
+      const hasTeacherConflicts = selectedUnavailableTeachers.length > 0;
+      const hasRoomConflicts = conflicts.length > 0;
+      
+      if (hasTeacherConflicts || hasRoomConflicts) {
+        const conflictMessages = [];
+        
+        if (hasTeacherConflicts) {
+          const teacherNames = selectedUnavailableTeachers.map(teacherId => 
+            filteredTeachers.find(t => t._id === teacherId)?.fullName
+          ).join(', ');
+          conflictMessages.push(`Teachers with conflicts: ${teacherNames}`);
+        }
+        
+        if (hasRoomConflicts) {
+          conflictMessages.push(`Room is already occupied`);
+        }
+        
         Modal.confirm({
-          title: 'Conflicts Detected',
-          content: 'There are scheduling conflicts. Do you want to proceed anyway?',
-          okText: 'Proceed',
+          title: 'Scheduling Conflicts Detected',
+          content: (
+            <div>
+              <p>The following conflicts were detected:</p>
+              <ul>
+                {conflictMessages.map((msg, index) => (
+                  <li key={index}>{msg}</li>
+                ))}
+              </ul>
+              <p>Do you want to proceed anyway?</p>
+            </div>
+          ),
+          okText: 'Proceed Anyway',
           cancelText: 'Cancel',
+          okType: 'danger',
           onOk: () => onSave(values)
         });
       } else {
@@ -370,6 +419,7 @@ const AssignClassModal = ({
       }
     } catch (error) {
       console.error('Form validation failed:', error);
+      message.error('Please fill in all required fields');
     }
   };
 
@@ -423,9 +473,19 @@ const AssignClassModal = ({
           type="primary" 
           loading={loading || checking}
           onClick={handleSubmit}
-          icon={conflicts.length > 0 ? <WarningOutlined /> : <CheckCircleOutlined />}
+          icon={
+            currentClassType === 'P' ? <CheckCircleOutlined /> :
+            conflicts.length > 0 ? <WarningOutlined /> : 
+            <CheckCircleOutlined />
+          }
+          disabled={!currentClassType}
         >
-          {conflicts.length > 0 ? 'Save with Conflicts' : 'Save'}
+          {currentClassType === 'P' 
+            ? 'Save Lab Class' 
+            : conflicts.length > 0 
+              ? 'Save with Conflicts' 
+              : 'Save Class'
+          }
         </Button>
       ]}
       width={800}
@@ -453,6 +513,27 @@ const AssignClassModal = ({
               <Text strong>Time:</Text> {selectedTimeSlot?.startTime} - {selectedTimeSlot?.endTime}
             </Col>
           </Row>
+          {currentClassType && (
+            <Row style={{ marginTop: '8px' }}>
+              <Col span={24}>
+                <div style={{ 
+                  padding: '4px 8px', 
+                  backgroundColor: currentClassType === 'P' ? '#f6ffed' : '#e6f7ff', 
+                  borderRadius: '4px',
+                  border: `1px solid ${currentClassType === 'P' ? '#b7eb8f' : '#91d5ff'}`
+                }}>
+                  <Space>
+                    <Text strong>Teacher Filtering:</Text>
+                    {currentClassType === 'P' ? (
+                      <Tag color="green">All teachers shown (Multiple allowed for labs)</Tag>
+                    ) : (
+                      <Tag color="blue">Only available teachers shown</Tag>
+                    )}
+                  </Space>
+                </div>
+              </Col>
+            </Row>
+          )}
         </Card>
 
         {/* Conflict Alert */}
