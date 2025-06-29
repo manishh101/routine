@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   Form,
@@ -13,7 +13,8 @@ import {
   Tag,
   Card,
   Spin,
-  message
+  message,
+  App
 } from 'antd';
 import {
   BookOutlined,
@@ -29,7 +30,8 @@ import {
   teachersAPI, 
   roomsAPI, 
   routinesAPI,
-  subjectsAPI
+  subjectsAPI,
+  timeSlotsAPI
 } from '../services/api';
 
 const { Title, Text } = Typography;
@@ -49,6 +51,17 @@ const AssignClassModal = ({
   existingClass,
   loading
 }) => {
+  console.log('AssignClassModal rendered with props:', {
+    visible,
+    programCode,
+    semester,
+    section,
+    dayIndex,
+    slotIndex,
+    timeSlots: timeSlots?.length || 0,
+    existingClass
+  });
+
   const [form] = Form.useForm();
   const [conflicts, setConflicts] = useState([]);
   const [checking, setChecking] = useState(false);
@@ -57,8 +70,26 @@ const AssignClassModal = ({
   const [filteredTeachers, setFilteredTeachers] = useState([]);
   const [currentClassType, setCurrentClassType] = useState(null);
 
+  // Use App.useApp for proper context support in modals
+  const { modal } = App.useApp();
+
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const selectedTimeSlot = timeSlots.find(slot => slot._id === slotIndex);
+  
+  // Fetch time slots if not provided
+  const { 
+    data: timeSlotsData, 
+    isLoading: timeSlotsLoading 
+  } = useQuery({
+    queryKey: ['timeSlots'],
+    queryFn: () => timeSlotsAPI.getTimeSlots(),
+    enabled: visible && (!timeSlots || timeSlots.length === 0),
+  });
+
+  // Use provided timeSlots or fetched ones
+  const availableTimeSlots = timeSlots && timeSlots.length > 0 ? timeSlots : (timeSlotsData?.data || []);
+  const selectedTimeSlot = availableTimeSlots.find(slot => slot._id === slotIndex) || 
+                           availableTimeSlots[slotIndex] || 
+                           { startTime: 'Unknown', endTime: 'Time', label: `Slot ${slotIndex}` };
 
   // Fetch subjects for this program-semester
   const { 
@@ -94,9 +125,9 @@ const AssignClassModal = ({
     enabled: visible,
   });
 
-  const subjects = subjectsData?.data || [];
-  const teachers = teachersData?.data || [];
-  const rooms = roomsData?.data?.data || [];
+  const subjects = Array.isArray(subjectsData?.data) ? subjectsData.data : [];
+  const teachers = Array.isArray(teachersData?.data) ? teachersData.data : [];
+  const rooms = Array.isArray(roomsData?.data?.data) ? roomsData.data.data : [];
   
   // Debug subjects data
   console.log('AssignClassModal - Subjects Debug:', {
@@ -120,7 +151,9 @@ const AssignClassModal = ({
   });
 
   // Filter teachers based on availability and class type
-  const filterTeachersBasedOnClassType = async (classType) => {
+  const filterTeachersBasedOnClassType = useCallback(async (classType) => {
+    if (teachers.length === 0) return;
+    
     setCurrentClassType(classType);
     
     // For lab/practical classes, show all teachers
@@ -177,7 +210,7 @@ const AssignClassModal = ({
       
       setChecking(false);
     }
-  };
+  }, [teachers, dayIndex, slotIndex]);
 
   // Update filtered teachers when teachers data changes or modal opens
   useEffect(() => {
@@ -193,7 +226,7 @@ const AssignClassModal = ({
         })));
       }
     }
-  }, [teachers, visible, dayIndex, slotIndex]);
+  }, [visible, teachers.length, currentClassType, dayIndex, slotIndex]); // Use teachers.length instead of teachers array
 
   // Set form values when editing existing class
   useEffect(() => {
@@ -208,10 +241,10 @@ const AssignClassModal = ({
       });
       // Set the class type to trigger teacher filtering
       setCurrentClassType(existingClass.classType);
-      if (existingClass.classType) {
+      if (existingClass.classType && teachers.length > 0) {
         filterTeachersBasedOnClassType(existingClass.classType);
       }
-    } else if (visible) {
+    } else if (visible && teachers.length > 0) {
       console.log('Modal opened for new class');
       form.resetFields();
       setCurrentClassType(null);
@@ -221,7 +254,7 @@ const AssignClassModal = ({
         reason: 'Select class type to check availability'
       })));
     }
-  }, [existingClass, visible, form, teachers]);
+  }, [existingClass, visible, teachers.length]); // Remove form and teachers dependencies
 
   // Check for room conflicts
   const checkRoomConflicts = async (values) => {
@@ -396,13 +429,13 @@ const AssignClassModal = ({
           conflictMessages.push(`Room is already occupied`);
         }
         
-        Modal.confirm({
+        modal.confirm({
           title: 'Scheduling Conflicts Detected',
           content: (
             <div>
               <p>The following conflicts were detected:</p>
               <ul>
-                {conflictMessages.map((msg, index) => (
+                {Array.isArray(conflictMessages) && conflictMessages.map((msg, index) => (
                   <li key={index}>{msg}</li>
                 ))}
               </ul>
@@ -431,7 +464,7 @@ const AssignClassModal = ({
         message="Scheduling Conflicts Detected"
         description={
           <div>
-            {conflicts.map((conflict, index) => (
+            {Array.isArray(conflicts) && conflicts.map((conflict, index) => (
               <div key={index} style={{ marginBottom: '4px' }}>
                 <Tag color="red">{conflict.type}</Tag>
                 <strong>{conflict.name}</strong> is already assigned to:
@@ -489,7 +522,7 @@ const AssignClassModal = ({
         </Button>
       ]}
       width={800}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Time Slot Info */}
@@ -560,7 +593,7 @@ const AssignClassModal = ({
                     option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
                   }
                 >
-                  {subjects.map(subject => (
+                  {Array.isArray(subjects) && subjects.map(subject => (
                     <Option key={subject.subjectId} value={subject.subjectId}>
                       {subject.subjectName_display || subject.subjectCode_display}
                       <br />
@@ -635,7 +668,7 @@ const AssignClassModal = ({
                   }
                   maxTagCount="responsive"
                 >
-                  {filteredTeachers.map(teacher => {
+                  {Array.isArray(filteredTeachers) && filteredTeachers.map(teacher => {
                     const isDisabled = currentClassType !== 'P' && !teacher.isAvailable;
                     
                     return (
@@ -691,27 +724,43 @@ const AssignClassModal = ({
                     option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
                   }
                 >
-                  {(availableRooms.length > 0 ? availableRooms : rooms).map(room => (
-                    <Option 
-                      key={room._id} 
-                      value={room._id}
-                      disabled={availableRooms.length > 0 && !room.isAvailable}
-                    >
-                      <Space>
-                        {room.name}
-                        {availableRooms.length > 0 && !room.isAvailable && (
-                          <Tag color="red" size="small">Busy</Tag>
-                        )}
-                        {availableRooms.length > 0 && room.isAvailable && (
-                          <Tag color="green" size="small">Available</Tag>
-                        )}
-                      </Space>
-                      <br />
-                      <Text type="secondary" style={{ fontSize: '12px' }}>
-                        {room.type} - Capacity: {room.capacity}
-                      </Text>
-                    </Option>
-                  ))}
+                  {Array.isArray(availableRooms) && availableRooms.length > 0 ? 
+                    availableRooms.map(room => (
+                      <Option 
+                        key={room._id} 
+                        value={room._id}
+                        disabled={!room.isAvailable}
+                      >
+                        <Space>
+                          {room.name}
+                          {!room.isAvailable && (
+                            <Tag color="red" size="small">Busy</Tag>
+                          )}
+                          {room.isAvailable && (
+                            <Tag color="green" size="small">Available</Tag>
+                          )}
+                        </Space>
+                        <br />
+                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                          {room.type} - Capacity: {room.capacity}
+                        </Text>
+                      </Option>
+                    )) : 
+                    Array.isArray(rooms) && rooms.map(room => (
+                      <Option 
+                        key={room._id} 
+                        value={room._id}
+                      >
+                        <Space>
+                          {room.name}
+                        </Space>
+                        <br />
+                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                          {room.type} - Capacity: {room.capacity}
+                        </Text>
+                      </Option>
+                    ))
+                  }
                 </Select>
               </Form.Item>
             </Col>
@@ -730,7 +779,9 @@ const AssignClassModal = ({
 
         {checking && (
           <div style={{ textAlign: 'center', padding: '16px' }}>
-            <Spin tip="Checking for conflicts..." />
+            <Spin size="large" tip="Checking for conflicts..." spinning={true}>
+              <div style={{ minHeight: '40px' }}></div>
+            </Spin>
           </div>
         )}
       </Space>

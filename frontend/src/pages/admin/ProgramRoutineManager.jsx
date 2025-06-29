@@ -4,6 +4,8 @@ import { Select, Card, Typography, Button, Alert, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import RoutineGrid from '../../components/RoutineGrid';
 import AssignClassModal from '../../components/AssignClassModal';
+import ExcelActions from '../../components/ExcelActions';
+import useRoutineSync from '../../hooks/useRoutineSync';
 import { programsAPI, programSemestersAPI, routinesAPI, timeSlotsAPI } from '../../services/api';
 
 const { Title } = Typography;
@@ -25,6 +27,7 @@ const { Option } = Select;
 const ProgramRoutineManager = () => {
   console.log('ProgramRoutineManager mounted');
   const queryClient = useQueryClient();
+  const { syncRoutineData, quickRefresh } = useRoutineSync();
 
   // Selection state
   const [selectedProgram, setSelectedProgram] = useState(null);
@@ -34,6 +37,10 @@ const ProgramRoutineManager = () => {
   // Modal state
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
+  
+  // Force refresh key for immediate UI updates
+  const [refreshKey, setRefreshKey] = useState(0);
+  const forceRefresh = () => setRefreshKey(prev => prev + 1);
 
   // Fetch programs
   const { data: programs, isLoading: programsLoading, error: programsError } = useQuery({
@@ -69,10 +76,18 @@ const ProgramRoutineManager = () => {
     queryKey: ['routine', selectedProgram, selectedSemester, selectedSection],
     queryFn: () => selectedProgram && selectedSemester && selectedSection
       ? routinesAPI.getRoutine(selectedProgram, selectedSemester, selectedSection)
-          .then(res => res.data.data)
+          .then(res => {
+            console.log('ProgramRoutineManager - Fresh data fetched:', res.data);
+            return res.data.data;
+          })
       : Promise.resolve(null),
     enabled: !!(selectedProgram && selectedSemester && selectedSection),
-    staleTime: 30000, // 30 seconds
+    staleTime: 0, // No stale time - always fresh data
+    gcTime: 0, // Don't cache data
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    // Force new data fetch when refreshKey changes
+    meta: { refreshKey }
   });
   
   // Fetch timeslots for Excel export
@@ -85,14 +100,20 @@ const ProgramRoutineManager = () => {
   // Handle cell click to open modal - Prompt 7 requirement
   const handleCellClick = (dayIndex, slotIndex, existingClassData = null) => {
     console.log('Cell clicked:', { dayIndex, slotIndex, existingClassData });
-    setSelectedCell({
+    console.log('Selected program/semester/section:', { selectedProgram, selectedSemester, selectedSection });
+    
+    const cellData = {
       dayIndex,
       slotIndex,
       existingClass: existingClassData,
       programCode: selectedProgram,
       semester: selectedSemester,
       section: selectedSection,
-    });
+    };
+    
+    console.log('Setting selectedCell to:', cellData);
+    setSelectedCell(cellData);
+    console.log('Setting modal visible to true');
     setIsModalVisible(true);
   };
 
@@ -253,6 +274,63 @@ const ProgramRoutineManager = () => {
                   >
                     Add New Class
                   </Button>
+                  
+                  {/* Excel Import/Export Actions */}
+                  <ExcelActions 
+                    programCode={selectedProgram}
+                    semester={selectedSemester}
+                    section={selectedSection}
+                    allowImport={true}
+                    allowExport={true}
+                    size="small"
+                    onImportSuccess={async (response) => {
+                      console.log('Import success callback triggered:', response);
+                      
+                      // Show success message with import details
+                      const importData = response?.data?.data || response?.data;
+                      const importedCount = importData?.slotsImported || 0;
+                      const skippedCount = importData?.skippedCells || 0;
+                      
+                      let successMessage = `Routine imported successfully! ${importedCount} classes added.`;
+                      if (skippedCount > 0) {
+                        successMessage += ` ${skippedCount} cells skipped.`;
+                      }
+                      
+                      message.success(successMessage, 5); // Show for 5 seconds
+                      
+                      // Use comprehensive synchronization
+                      console.log('Starting comprehensive data sync after import...');
+                      
+                      const syncSuccess = await syncRoutineData(selectedProgram, selectedSemester, selectedSection, {
+                        verifyData: true,
+                        enablePageRefreshFallback: true,
+                        onVerificationSuccess: (freshData) => {
+                          console.log('✅ Import verification successful - data is visible');
+                          forceRefresh(); // Also trigger local refresh
+                        },
+                        onVerificationFailed: () => {
+                          console.warn('⚠️ Import verification failed - forcing page refresh');
+                          window.location.reload();
+                        }
+                      });
+                      
+                      if (!syncSuccess) {
+                        console.warn('Sync failed, falling back to force refresh...');
+                        forceRefresh();
+                        setTimeout(() => refetchRoutine(), 500);
+                      }
+                    }}
+                    onImportError={(error) => {
+                      message.error('Failed to import routine: ' + (error.response?.data?.message || error.message));
+                    }}
+                    onExportSuccess={(filename) => {
+                      message.success(`Routine exported as ${filename}`);
+                    }}
+                    onExportError={(error) => {
+                      message.error('Failed to export routine: ' + (error.response?.data?.message || error.message));
+                    }}
+                  />
+                  
                   {routineData && (
                     <Button 
                       onClick={() => refetchRoutine()}
@@ -313,7 +391,7 @@ const ProgramRoutineManager = () => {
           section={selectedCell.section}
           dayIndex={selectedCell.dayIndex}
           slotIndex={selectedCell.slotIndex}
-          timeSlots={[]} // Will be fetched inside modal
+          timeSlots={timeSlotsData?.data || []} // Pass fetched time slots
           existingClass={selectedCell.existingClass}
           loading={false}
         />

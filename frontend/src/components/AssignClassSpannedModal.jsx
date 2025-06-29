@@ -15,7 +15,8 @@ import {
   Spin,
   InputNumber,
   Slider,
-  message
+  message,
+  App
 } from 'antd';
 import {
   BookOutlined,
@@ -61,6 +62,9 @@ const AssignClassSpannedModal = ({
   const [duration, setDuration] = useState(1);
   const [spannedSlots, setSpannedSlots] = useState([]);
   const [spannedConflicts, setSpannedConflicts] = useState([]);
+
+  // Use App.useApp for proper context support in modals
+  const { modal } = App.useApp();
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const selectedTimeSlot = timeSlots.find(slot => slot._id === slotIndex);
@@ -309,7 +313,7 @@ const AssignClassSpannedModal = ({
       // If single period class (duration = 1)
       if (duration === 1) {
         if (hasConflicts) {
-          Modal.confirm({
+          modal.confirm({
             title: 'Conflicts Detected',
             content: 'There are scheduling conflicts. Do you want to proceed anyway?',
             okText: 'Proceed',
@@ -323,7 +327,7 @@ const AssignClassSpannedModal = ({
       // If multi-period class (duration > 1)
       else {
         if (hasConflicts) {
-          Modal.confirm({
+          modal.confirm({
             title: 'Multi-Period Conflicts Detected',
             content: `There are scheduling conflicts in ${spannedConflicts.length + conflicts.length} periods. Do you want to proceed anyway?`,
             okText: 'Proceed',

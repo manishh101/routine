@@ -145,15 +145,30 @@ class ExcelImportService {
       );
 
       message.destroy();
-      message.success(MESSAGES.IMPORT.SUCCESS);
       
-      onSuccess?.(response);
-      return { success: true, data: response };
+      // Check if the response indicates success
+      const isSuccess = response?.data?.success !== false;
+      
+      if (isSuccess) {
+        const importStats = response?.data?.data;
+        const successMessage = importStats 
+          ? `${MESSAGES.IMPORT.SUCCESS} (${importStats.slotsImported} classes imported)`
+          : MESSAGES.IMPORT.SUCCESS;
+        
+        message.success(successMessage);
+        console.log('Import response:', response?.data);
+        
+        onSuccess?.(response);
+        return { success: true, data: response };
+      } else {
+        throw new Error(response?.data?.message || 'Import failed');
+      }
 
     } catch (error) {
       message.destroy();
-      const errorMessage = error.response?.data?.message || MESSAGES.IMPORT.ERROR;
+      const errorMessage = error.response?.data?.message || error.message || MESSAGES.IMPORT.ERROR;
       message.error(errorMessage);
+      console.error('Import error details:', error);
       onError?.(error);
       return { success: false, error };
     }

@@ -413,8 +413,19 @@ The system prevents scheduling conflicts by checking:
 
 ## 📚 Documentation
 
+### Core Documentation
+- [Documentation Index](md/INDEX.md) - Complete documentation overview
 - [Architecture Overview](md/architecture.md) - System design and data flow
 - [Database Design](md/database_design.md) - Schema and relationships
+- [Routine Management](md/routine.md) - Routine management documentation
+
+### Implementation Reports
+- [Feature Completion Reports](md/) - Detailed implementation and validation reports
+- [System Cleanup Reports](md/) - Code optimization and maintenance reports
+- [Excel Integration Reports](md/) - Excel import/export implementation reports
+
+### Setup Guides
+- [Quick Backend Setup](md/QUICK_BACKEND_SETUP.md) - Backend setup guide
 - [Queue Setup Guide](backend/QUEUE_SETUP.md) - RabbitMQ configuration
 - [File Upload Documentation](backend/FILE_UPLOAD_DOCS.md) - Excel import/export workflow
 

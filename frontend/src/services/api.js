@@ -315,6 +315,10 @@ export const routinesAPI = {
   assignClassSpanned: (data) =>
     api.post(`/routines/assign-class-spanned`, data),
     
+  // Clear a span group (multi-period class)
+  clearSpanGroup: (spanId) =>
+    api.delete(`/routines/clear-span-group/${spanId}`),
+    
   // Check teacher availability
   checkTeacherAvailability: (teacherId, dayIndex, slotIndex) =>
     api.get(`/routines/teachers/${teacherId}/availability?dayIndex=${dayIndex}&slotIndex=${slotIndex}`),

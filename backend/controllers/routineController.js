@@ -67,6 +67,8 @@ exports.getRoutine = async (req, res) => {
       .populate('roomId', 'name')
       .sort({ dayIndex: 1, slotIndex: 1 });
 
+    console.log(`Found ${routineSlots.length} routine slots for ${programCode}-${semester}-${section}`);
+
     // Group by days and slots for easier frontend consumption
     const routine = {};
     for (let day = 0; day <= 6; day++) {
@@ -93,6 +95,8 @@ exports.getRoutine = async (req, res) => {
         timeSlot_display: slot.timeSlot_display
       };
     });
+
+    console.log(`Built routine object with ${Object.keys(routine).length} days, total slots: ${Object.values(routine).reduce((total, day) => total + Object.keys(day).length, 0)}`);
 
     res.json({
       success: true,
@@ -1034,12 +1038,14 @@ exports.importRoutineFromExcel = async (req, res) => {
               subjectName_display: subjectName_display,
               subjectCode_display: subjectCode_display,
               teacherShortNames_display: teacherShortNames_display,
-              roomName_display: roomName_display
+              roomName_display: roomName_display,
+              isActive: true // Ensure the slot is active
             });
             
             newSlots.push(routineSlot);
+            console.log(`Created slot for ${dayName}, slot ${timeSlotCol.slotIndex}: ${subjectCode_display} - ${subjectName_display}`);
           } else {
-            console.log(`Skipping incomplete slot at ${dayName}, slot ${timeSlotCol.slotIndex}: missing required IDs`);
+            console.log(`Skipping incomplete slot at ${dayName}, slot ${timeSlotCol.slotIndex}: subject=${!!subjectId}, teachers=${teacherIds.length}, room=${!!roomId}`);
             skippedCells++;
           }
 
@@ -1052,10 +1058,24 @@ exports.importRoutineFromExcel = async (req, res) => {
 
     // Save all new slots
     if (newSlots.length > 0) {
-      await RoutineSlot.insertMany(newSlots);
+      console.log(`Attempting to save ${newSlots.length} routine slots...`);
+      const savedSlots = await RoutineSlot.insertMany(newSlots);
+      console.log(`Successfully saved ${savedSlots.length} routine slots to database`);
+    } else {
+      console.log('No valid slots to save');
     }
 
-    console.log(`Successfully imported ${newSlots.length} routine slots, skipped ${skippedCells}, errors ${errorCells}`);
+    console.log(`Import completed: ${newSlots.length} slots imported, ${skippedCells} skipped, ${errorCells} errors`);
+
+    // Verify the data was saved by checking the count
+    const savedCount = await RoutineSlot.countDocuments({
+      programCode: programCode.toUpperCase(),
+      semester: parseInt(semester),
+      section: section.toUpperCase(),
+      isActive: true
+    });
+    
+    console.log(`Database verification: ${savedCount} active slots found for ${programCode}-${semester}-${section}`);
 
     res.json({
       success: true,
@@ -1066,7 +1086,8 @@ exports.importRoutineFromExcel = async (req, res) => {
         section: section.toUpperCase(),
         slotsImported: newSlots.length,
         skippedCells: skippedCells,
-        errorCells: errorCells
+        errorCells: errorCells,
+        totalSlotsInDatabase: savedCount
       }
     });
 
