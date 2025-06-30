@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ConfigProvider, theme } from 'antd';
+import { ConfigProvider, theme, App as AntdApp } from 'antd';
 import useAuthStore from './contexts/authStore';
 
 // Pages
@@ -116,8 +116,9 @@ function App() {
           }
         }}
       >
-        <Router>
-          <Routes>
+        <AntdApp>
+          <Router>
+            <Routes>
             {/* Login route - outside of Layout */}
             <Route path="/admin/login" element={<LoginPage />} />
             
@@ -202,6 +203,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>
+        </AntdApp>
       </ConfigProvider>
     </QueryClientProvider>
   );

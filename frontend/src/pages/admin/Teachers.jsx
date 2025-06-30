@@ -185,11 +185,11 @@ const Teachers = () => {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: '16px' }}>
-        <Col>
-          <Space align="center" size="middle">
+      <Row justify="space-between" align="middle" className="admin-page-header mobile-stack" style={{ marginBottom: '16px' }}>
+        <Col xs={24} lg={16}>
+          <Space align="center" size="middle" className="mobile-stack-vertical">
             <TeamOutlined style={{ fontSize: '32px', color: '#1677ff' }} />
-            <div>
+            <div className="mobile-center">
               <Title level={2} style={{ margin: 0 }}>
                 Teachers
               </Title>
@@ -199,16 +199,18 @@ const Teachers = () => {
             </div>
           </Space>
         </Col>
-        <Col>
-          <Button 
-            type="primary" 
-            size="large"
-            icon={<PlusOutlined />}
-            onClick={handleAddNew}
-            style={{ borderRadius: '6px' }}
-          >
-            Add New Teacher
-          </Button>
+        <Col xs={24} lg={8}>
+          <div className="admin-actions" style={{ textAlign: 'right' }}>
+            <Button 
+              type="primary" 
+              size="large"
+              icon={<PlusOutlined />}
+              onClick={handleAddNew}
+              style={{ borderRadius: '6px' }}
+            >
+              Add New Teacher
+            </Button>
+          </div>
         </Col>
       </Row>
 
@@ -241,7 +243,7 @@ const Teachers = () => {
       </Row>
 
       {/* Teachers Table */}
-      <Card style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} styles={{ body: { padding: 0 } }}>
+      <Card className="mobile-table" style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} styles={{ body: { padding: 0 } }}>
          <Table
             columns={columns}
             dataSource={teachers}

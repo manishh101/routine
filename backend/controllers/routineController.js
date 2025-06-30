@@ -39,6 +39,176 @@ const upload = multer({
   }
 });
 
+// Enhanced validation helper functions
+const validateAssignClassData = async (data) => {
+  const errors = [];
+  const { programCode, semester, section, dayIndex, slotIndex, subjectId, teacherIds, roomId, classType } = data;
+
+  // Basic data validation
+  if (!programCode || typeof programCode !== 'string') {
+    errors.push('Valid program code is required');
+  }
+
+  if (!semester || !Number.isInteger(semester) || semester < 1 || semester > 8) {
+    errors.push('Semester must be between 1 and 8');
+  }
+
+  if (!section || !['AB', 'CD'].includes(section.toUpperCase())) {
+    errors.push('Section must be either AB or CD');
+  }
+
+  if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > 6) {
+    errors.push('Day index must be between 0 and 6');
+  }
+
+  if (!Number.isInteger(slotIndex) || slotIndex < 0) {
+    errors.push('Slot index must be a non-negative integer');
+  }
+
+  if (!classType || !['L', 'P', 'T'].includes(classType)) {
+    errors.push('Class type must be L (Lecture), P (Practical), or T (Tutorial)');
+  }
+
+  // Validate IDs exist
+  try {
+    const [program, subject, teachers, room, timeSlot] = await Promise.all([
+      Program.findOne({ code: programCode.toUpperCase() }),
+      Subject.findById(subjectId),
+      Teacher.find({ _id: { $in: teacherIds } }),
+      Room.findById(roomId),
+      TimeSlot.findOne({ _id: slotIndex })
+    ]);
+
+    if (!program) {
+      errors.push(`Program with code ${programCode} not found`);
+    }
+
+    if (!subject) {
+      errors.push('Subject not found');
+    }
+
+    if (!teachers || teachers.length !== teacherIds.length) {
+      errors.push('One or more teachers not found');
+    }
+
+    if (!room) {
+      errors.push('Room not found');
+    }
+
+    if (!timeSlot) {
+      errors.push('Time slot not found');
+    } else if (timeSlot.isBreak) {
+      errors.push('Cannot assign classes during break time');
+    }
+
+    // Business rule validations
+    if (room && classType === 'P' && room.type && !room.type.toLowerCase().includes('lab')) {
+      errors.push('Practical classes should typically be assigned to lab rooms');
+    }
+
+    if (teachers && teachers.length > 1 && classType !== 'P') {
+      errors.push('Multiple teachers are typically only allowed for practical/lab classes');
+    }
+
+  } catch (dbError) {
+    errors.push('Error validating data against database');
+    console.error('Database validation error:', dbError);
+  }
+
+  return errors;
+};
+
+// Enhanced conflict detection
+const checkAdvancedConflicts = async (data, existingSlotId = null) => {
+  const conflicts = [];
+  const { programCode, semester, section, dayIndex, slotIndex, teacherIds, roomId } = data;
+
+  try {
+    // Check for teacher conflicts
+    for (const teacherId of teacherIds) {
+      const teacherConflicts = await RoutineSlot.find({
+        dayIndex,
+        slotIndex,
+        teacherIds: teacherId,
+        ...(existingSlotId ? { _id: { $ne: existingSlotId } } : {})
+      }).populate('subjectId', 'name code')
+        .populate('roomId', 'name');
+
+      for (const conflict of teacherConflicts) {
+        const teacher = await Teacher.findById(teacherId);
+        conflicts.push({
+          type: 'teacher',
+          resourceId: teacherId,
+          resourceName: teacher?.fullName || 'Unknown Teacher',
+          conflictDetails: {
+            programCode: conflict.programCode,
+            semester: conflict.semester,
+            section: conflict.section,
+            subjectName: conflict.subjectName_display || conflict.subjectId?.name,
+            subjectCode: conflict.subjectCode_display || conflict.subjectId?.code,
+            roomName: conflict.roomName_display || conflict.roomId?.name,
+            timeSlot: conflict.timeSlot_display
+          }
+        });
+      }
+    }
+
+    // Check for room conflicts
+    const roomConflicts = await RoutineSlot.find({
+      dayIndex,
+      slotIndex,
+      roomId,
+      ...(existingSlotId ? { _id: { $ne: existingSlotId } } : {})
+    }).populate('subjectId', 'name code')
+      .populate('teacherIds', 'fullName');
+
+    for (const conflict of roomConflicts) {
+      const room = await Room.findById(roomId);
+      conflicts.push({
+        type: 'room',
+        resourceId: roomId,
+        resourceName: room?.name || 'Unknown Room',
+        conflictDetails: {
+          programCode: conflict.programCode,
+          semester: conflict.semester,
+          section: conflict.section,
+          subjectName: conflict.subjectName_display || conflict.subjectId?.name,
+          subjectCode: conflict.subjectCode_display || conflict.subjectId?.code,
+          teacherNames: conflict.teacherIds?.map(t => t.fullName) || [],
+          timeSlot: conflict.timeSlot_display
+        }
+      });
+    }
+
+    // Check for program-section conflicts (shouldn't happen but good to validate)
+    const sectionConflicts = await RoutineSlot.find({
+      programCode: programCode.toUpperCase(),
+      semester: parseInt(semester),
+      section: section.toUpperCase(),
+      dayIndex,
+      slotIndex,
+      ...(existingSlotId ? { _id: { $ne: existingSlotId } } : {})
+    });
+
+    if (sectionConflicts.length > 0) {
+      conflicts.push({
+        type: 'section',
+        resourceId: `${programCode}-${semester}-${section}`,
+        resourceName: `${programCode} Semester ${semester} Section ${section}`,
+        conflictDetails: {
+          message: 'This program-semester-section already has a class scheduled at this time'
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('Error checking conflicts:', error);
+    throw new Error('Failed to check for scheduling conflicts');
+  }
+
+  return conflicts;
+};
+
 // @desc    Get routine for specific program/semester/section
 // @route   GET /api/routines/:programCode/:semester/:section
 // @access  Public
@@ -116,7 +286,7 @@ exports.getRoutine = async (req, res) => {
   }
 };
 
-// @desc    Assign class to routine slot
+// @desc    Enhanced assign class to routine slot with comprehensive validation
 // @route   POST /api/routines/:programCode/:semester/:section/assign
 // @access  Private/Admin
 exports.assignClass = async (req, res) => {
@@ -124,6 +294,7 @@ exports.assignClass = async (req, res) => {
   if (!errors.isEmpty()) {
     return res.status(400).json({
       success: false,
+      message: 'Validation failed',
       errors: errors.array()
     });
   }
@@ -135,7 +306,43 @@ exports.assignClass = async (req, res) => {
     const { programCode, semester, section } = req.params;
     const { dayIndex, slotIndex, subjectId, teacherIds, roomId, classType, notes } = req.body;
 
-    // Validate input
+    console.log('assignClass called with:', {
+      programCode,
+      semester,
+      section,
+      dayIndex,
+      slotIndex,
+      subjectId,
+      teacherIds,
+      roomId,
+      classType,
+      notes
+    });
+
+    // Enhanced validation
+    const validationData = {
+      programCode,
+      semester: parseInt(semester),
+      section: section.toUpperCase(),
+      dayIndex,
+      slotIndex,
+      subjectId,
+      teacherIds,
+      roomId,
+      classType,
+      notes
+    };
+
+    const validationErrors = await validateAssignClassData(validationData);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+
+    // Validate input arrays
     if (!Array.isArray(teacherIds) || teacherIds.length === 0) {
       return res.status(400).json({
         success: false,
@@ -152,75 +359,31 @@ exports.assignClass = async (req, res) => {
       slotIndex
     });
 
-    // Check for teacher conflicts
-    for (const teacherId of teacherIds) {
-      // Skip conflict check for the same slot if we're updating
-      const teacherConflict = await RoutineSlot.findOne({
-        dayIndex,
-        slotIndex,
-        teacherIds: teacherId,
-        ...(existingSlot ? { _id: { $ne: existingSlot._id } } : {})
-      }).populate('subjectId', 'name')
-        .populate('roomId', 'name');
-
-      if (teacherConflict) {
-        const teacher = await Teacher.findById(teacherId);
-        return res.status(409).json({
-          success: false,
-          message: 'Teacher conflict detected',
-          conflict: {
-            type: 'teacher',
-            teacherName: teacher?.fullName,
-            conflictDetails: {
-              programCode: teacherConflict.programCode,
-              semester: teacherConflict.semester,
-              section: teacherConflict.section,
-              subjectName: teacherConflict.subjectName_display || teacherConflict.subjectId?.name,
-              roomName: teacherConflict.roomName_display || teacherConflict.roomId?.name
-            }
-          }
-        });
-      }
-    }
-
-    // Check for room conflict
-    const roomConflict = await RoutineSlot.findOne({
-      dayIndex,
-      slotIndex,
-      roomId,
-      ...(existingSlot ? { _id: { $ne: existingSlot._id } } : {})
-    }).populate('subjectId', 'name');
-
-    if (roomConflict) {
-      const room = await Room.findById(roomId);
+    // Enhanced conflict detection
+    const conflicts = await checkAdvancedConflicts(validationData, existingSlot?._id);
+    
+    if (conflicts.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'Room conflict detected',
-        conflict: {
-          type: 'room',
-          roomName: room?.name,
-          conflictDetails: {
-            programCode: roomConflict.programCode,
-            semester: roomConflict.semester,
-            section: roomConflict.section,
-            subjectName: roomConflict.subjectName_display || roomConflict.subjectId?.name
-          }
-        }
+        message: 'Scheduling conflicts detected',
+        conflicts: conflicts,
+        conflictCount: conflicts.length
       });
     }
 
-    // Get denormalized display data
-    const subject = await Subject.findById(subjectId);
-    const teachers = await Teacher.find({ _id: { $in: teacherIds } });
-    const room = await Room.findById(roomId);
-    
-    // Get time slot display for denormalized field
-    const timeSlot = await TimeSlot.findOne({ _id: slotIndex });
+    // Get reference data for denormalized fields
+    const [subject, teachers, room, timeSlot] = await Promise.all([
+      Subject.findById(subjectId),
+      Teacher.find({ _id: { $in: teacherIds } }),
+      Room.findById(roomId),
+      TimeSlot.findOne({ _id: slotIndex })
+    ]);
 
-    if (!subject || teachers.length !== teacherIds.length || !room) {
+    // Final validation (should have been caught earlier but double-check)
+    if (!subject || teachers.length !== teacherIds.length || !room || !timeSlot) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid subject, teacher, or room ID provided'
+        message: 'Invalid reference data - subject, teachers, room, or time slot not found'
       });
     }
 
@@ -235,17 +398,21 @@ exports.assignClass = async (req, res) => {
       roomId,
       classType: classType || 'L',
       notes: notes || '',
-      // Denormalized display fields (architecture requirement)
+      // Denormalized display fields for performance
       subjectName_display: subject.name,
       subjectCode_display: subject.code,
-      teacherShortNames_display: teachers.map(t => t.shortName || t.fullName.split(' ').map(n => n[0]).join('.')),
+      teacherShortNames_display: teachers.map(t => 
+        t.shortName || t.fullName.split(' ').map(n => n[0]).join('.')
+      ),
       roomName_display: room.name,
-      timeSlot_display: timeSlot ? `${timeSlot.startTime} - ${timeSlot.endTime}` : ''
+      timeSlot_display: `${timeSlot.startTime} - ${timeSlot.endTime}`,
+      updatedAt: new Date()
     };
 
     let routineSlot;
     if (existingSlot) {
       // Update existing slot
+      console.log('Updating existing slot:', existingSlot._id);
       routineSlot = await RoutineSlot.findByIdAndUpdate(
         existingSlot._id,
         slotData,
@@ -253,51 +420,80 @@ exports.assignClass = async (req, res) => {
       );
     } else {
       // Create new slot
+      console.log('Creating new slot');
       routineSlot = await RoutineSlot.create(slotData);
     }
 
-    // Publish message to queue for teacher schedule regeneration (following architecture documentation)
+    if (!routineSlot) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to save class assignment'
+      });
+    }
+
+    // Queue teacher schedule updates
     try {
-      // For updates, oldTeacherIds should be fetched from the slot before the update
-      const oldTeacherIds = existingSlot ? existingSlot.teacherIds || [] : [];
+      const oldTeacherIds = existingSlot ? (existingSlot.teacherIds || []) : [];
       const newTeacherIds = teacherIds || [];
-      
       const affectedTeacherIds = [...new Set([...oldTeacherIds, ...newTeacherIds])]
-        .filter(id => id != null && id.toString()); // Ensure IDs are valid
+        .filter(id => id != null && id.toString());
       
       if (affectedTeacherIds.length > 0) {
         const { publishToQueue } = require('../services/queue.service');
-        await publishToQueue(
-          'teacher_routine_updates', 
-          { affectedTeacherIds }
-        );
+        await publishToQueue('teacher_routine_updates', { 
+          affectedTeacherIds,
+          action: existingSlot ? 'update' : 'create',
+          programCode,
+          semester,
+          section,
+          dayIndex,
+          slotIndex
+        });
         console.log(`[Queue] Queued schedule updates for teachers: ${affectedTeacherIds.join(', ')}`);
       }
     } catch (queueError) {
-      console.error('CRITICAL: Failed to queue teacher schedule updates. Manual regeneration may be required.', queueError);
-      // Do not re-throw; the user's action was successful.
+      console.error('CRITICAL: Failed to queue teacher schedule updates:', queueError);
+      // Continue execution - the main operation was successful
     }
 
-    // Return 201 Created response
-    res.status(201).json({
+    // Return success response
+    res.status(existingSlot ? 200 : 201).json({
       success: true,
       data: routineSlot,
-      message: existingSlot ? 'Class assignment updated successfully' : 'Class assigned successfully'
+      message: existingSlot ? 'Class assignment updated successfully' : 'Class assigned successfully',
+      metadata: {
+        operation: existingSlot ? 'update' : 'create',
+        conflictsChecked: true,
+        teachersAffected: teacherIds.length,
+        queuedForUpdate: true
+      }
     });
+
   } catch (error) {
     console.error('Error in assignClass:', error);
     
-    // Handle MongoDB duplicate key error (E11000)
+    // Handle specific error types
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: 'A class is already scheduled for this program/semester/section at this time slot'
+        message: 'Duplicate class assignment detected',
+        error: 'A class is already scheduled for this program/semester/section at this time slot'
+      });
+    }
+    
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Data validation failed',
+        errors: validationErrors
       });
     }
     
     res.status(500).json({
       success: false,
-      message: 'Server Error'
+      message: 'Internal server error while assigning class',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Please try again later'
     });
   }
 };
@@ -651,6 +847,92 @@ exports.clearClass = async (req, res) => {
     });
   }
 };
+
+// @desc    Clear entire weekly routine for a section
+// @route   DELETE /api/routines/:programCode/:semester/:section/clear-all
+// @access  Private/Admin
+exports.clearEntireRoutine = async (req, res) => {
+  try {
+    const { programCode, semester, section } = req.params;
+
+    // Find all routine slots for this program/semester/section
+    const routineSlots = await RoutineSlot.find({
+      programCode: programCode.toUpperCase(),
+      semester: parseInt(semester),
+      section: section.toUpperCase()
+    });
+
+    if (!routineSlots || routineSlots.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No routine found for ${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`
+      });
+    }
+
+    // Store all affected teachers before deletion
+    const allAffectedTeachers = routineSlots.reduce((teachers, slot) => {
+      if (slot.teacherIds && slot.teacherIds.length > 0) {
+        teachers.push(...slot.teacherIds);
+      }
+      return teachers;
+    }, []);
+
+    // Get unique teacher IDs
+    const uniqueTeacherIds = [...new Set(allAffectedTeachers.map(id => id.toString()))];
+
+    // Delete all routine slots for this program/semester/section
+    const deleteResult = await RoutineSlot.deleteMany({
+      programCode: programCode.toUpperCase(),
+      semester: parseInt(semester),
+      section: section.toUpperCase()
+    });
+
+    // Publish message to queue for teacher schedule regeneration
+    try {
+      if (uniqueTeacherIds.length > 0) {
+        const { publishToQueue } = require('../services/queue.service');
+        await publishToQueue(
+          'teacher_routine_updates', 
+          { affectedTeacherIds: uniqueTeacherIds }
+        );
+        console.log(`[Queue] Queued schedule updates for teachers: ${uniqueTeacherIds.join(', ')}`);
+      }
+    } catch (queueError) {
+      console.error('CRITICAL: Failed to queue teacher schedule updates. Manual regeneration may be required.', queueError);
+      
+      // Fallback: Direct asynchronous teacher schedule regeneration
+      setImmediate(async () => {
+        for (const teacherId of uniqueTeacherIds) {
+          try {
+            // Teacher schedule generation has been disabled
+            console.log(`Teacher schedule generation disabled for teacher ${teacherId}`);
+          } catch (error) {
+            console.error(`Error in disabled teacher schedule generation for teacher ${teacherId}:`, error);
+          }
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        deletedCount: deleteResult.deletedCount,
+        programCode: programCode.toUpperCase(),
+        semester,
+        section: section.toUpperCase(),
+        affectedTeachers: uniqueTeacherIds.length
+      },
+      message: `Successfully cleared the entire routine for ${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()} (${deleteResult.deletedCount} classes removed)`
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error'
+    });
+  }
+};
+
 
 // @desc    Get all routines for a program
 // @route   GET /api/routines/:programCode
@@ -1034,7 +1316,7 @@ exports.importRoutineFromExcel = async (req, res) => {
               teacherIds: teacherIds,
               roomId: roomId,
               classType: classType,
-              notes: 'Imported from Excel',
+              notes: '', // Don't add 'Imported from Excel' note by default
               subjectName_display: subjectName_display,
               subjectCode_display: subjectCode_display,
               teacherShortNames_display: teacherShortNames_display,

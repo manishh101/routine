@@ -400,7 +400,7 @@ button {
   transform: translateX(2px) !important;
 }
 
-/* Responsive enhancements */
+/* Mobile Responsiveness Enhancements */
 @media (max-width: 768px) {
   .admin-user-button {
     padding: 10px 12px !important;
@@ -413,5 +413,123 @@ button {
   
   .admin-user-button .ant-space {
     gap: 8px !important;
+  }
+
+  /* Mobile layout adjustments */
+  .ant-layout-content {
+    padding: 12px 8px !important;
+  }
+
+  /* Mobile table responsiveness */
+  .ant-table-wrapper {
+    overflow-x: auto !important;
+  }
+
+  .ant-table {
+    min-width: 600px !important;
+  }
+
+  /* Mobile form adjustments */
+  .ant-form-item {
+    margin-bottom: 16px !important;
+  }
+
+  .ant-btn {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  /* Mobile modal adjustments */
+  .ant-modal {
+    margin: 8px !important;
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  .ant-modal-content {
+    border-radius: 12px !important;
+  }
+
+  /* Mobile card adjustments */
+  .ant-card {
+    margin: 8px 0 !important;
+  }
+
+  .ant-card-body {
+    padding: 16px !important;
+  }
+
+  /* Mobile menu items */
+  .ant-menu-item {
+    margin: 4px 8px !important;
+    border-radius: 8px !important;
+  }
+
+  /* Mobile drawer styles */
+  .mobile-drawer {
+    width: 280px !important;
+  }
+}
+
+/* Tablet responsiveness */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .ant-layout-sider {
+    width: 200px !important;
+  }
+
+  .ant-layout-sider-collapsed {
+    width: 72px !important;
+  }
+}
+
+/* Touch-friendly enhancements */
+@media (pointer: coarse) {
+  .ant-btn {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+
+  .ant-input {
+    min-height: 44px !important;
+  }
+
+  .ant-select-selector {
+    min-height: 44px !important;
+  }
+
+  .ant-menu-item {
+    padding: 12px 16px !important;
+    margin: 4px 8px !important;
+  }
+}
+
+/* Landscape phone adjustments */
+@media (max-width: 896px) and (orientation: landscape) {
+  .ant-layout-header {
+    height: 48px !important;
+  }
+
+  .ant-layout-content {
+    margin-top: 48px !important;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+  .ant-modal {
+    margin: 4px !important;
+    max-width: calc(100vw - 8px) !important;
+  }
+
+  .ant-card-body {
+    padding: 12px !important;
+  }
+
+  .ant-form-item-label {
+    text-align: left !important;
+  }
+
+  /* Hide non-essential elements on very small screens */
+  .mobile-hide-480 {
+    display: none !important;
   }
 }

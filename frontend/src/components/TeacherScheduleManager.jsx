@@ -234,12 +234,12 @@ const TeacherScheduleManager = () => {
 
   return (
     <div className="teacher-schedule-manager" style={{ background: '#f5f7fa', minHeight: '100vh', padding: '24px' }}>
-      <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: '1400px', margin: '0 auto' }}>
+      <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: '1800px', margin: '0 auto' }}>
         
         {/* Backend Connection Notice */}
         {isUsingDemoData && (
           <Alert
-            message="⚠️ Backend Connection Issue"
+            message=" Backend Connection Issue"
             description="Cannot connect to the backend server. Please ensure the backend is running and accessible to view real teacher data."
             type="error"
             showIcon
@@ -297,10 +297,10 @@ const TeacherScheduleManager = () => {
               }}>
                 <Space direction="vertical" size="medium" style={{ width: '100%' }}>
                   <Text strong style={{ color: 'white', fontSize: '16px', display: 'block' }}>
-                    🎯 Select Teacher
+                     Select Teacher
                   </Text>
                   <Select
-                    placeholder={isUsingDemoData ? "⚠️ Backend not connected - No teachers available" : "Search and select a teacher..."}
+                    placeholder={isUsingDemoData ? " Backend not connected - No teachers available" : "Search and select a teacher..."}
                     style={{ width: '100%' }}
                     loading={teachersLoading}
                     onChange={handleTeacherChange}
@@ -440,7 +440,7 @@ const TeacherScheduleManager = () => {
                       marginTop: '8px'
                     }}>
                       <Text style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.9)' }}>
-                        ⚠️ Backend not connected: Unable to load teachers from database
+                         Backend not connected: Unable to load teachers from database
                       </Text>
                     </div>
                   )}
@@ -481,10 +481,10 @@ const TeacherScheduleManager = () => {
                       </Title>
                       <Space wrap size="small" style={{ marginTop: '8px' }}>
                         <Tag color="blue" style={{ borderRadius: '20px', padding: '4px 12px', border: 'none' }}>
-                          📚 {selectedTeacherInfo.department}
+                           {selectedTeacherInfo.department}
                         </Tag>
                         <Tag color="green" style={{ borderRadius: '20px', padding: '4px 12px', border: 'none' }}>
-                          💼 {selectedTeacherInfo.designation}
+                           {selectedTeacherInfo.designation}
                         </Tag>
                       </Space>
                     </div>
@@ -638,7 +638,7 @@ const TeacherScheduleManager = () => {
                       background: '#f0f0f0'
                     }}
                   >
-                    🔍 Debug Info
+                     Debug Info
                   </Button>
                 </Space>
               </div>
@@ -685,7 +685,7 @@ const TeacherScheduleManager = () => {
             }}
             styles={{
               body: {
-                padding: '24px'
+                padding: '4px 8px'
               }
             }}
           >
@@ -752,7 +752,7 @@ const TeacherScheduleManager = () => {
               <div style={{
                 background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
                 borderRadius: '12px',
-                padding: '16px'
+                padding: '4px 6px'
               }}>
                 <RoutineGrid 
                   teacherViewMode={true}
@@ -817,7 +817,7 @@ const TeacherScheduleManager = () => {
               </div>
               
               <Title level={3} style={{ color: '#1a1a1a', marginBottom: '16px' }}>
-                🚀 Get Started with Teacher Schedules
+                 Get Started with Teacher Schedules
               </Title>
               
               <Text style={{ fontSize: '16px', color: '#666', display: 'block', marginBottom: '32px' }}>

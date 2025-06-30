@@ -243,11 +243,11 @@ const RoomManagement = () => {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Header */}
-      <Row justify="space-between" align="middle">
-        <Col>
-          <Space align="center">
+      <Row justify="space-between" align="middle" className="admin-page-header mobile-stack">
+        <Col xs={24} lg={16}>
+          <Space align="center" className="mobile-stack-vertical">
             <HomeOutlined style={{ fontSize: '32px', color: '#fa8c16' }} />
-            <div>
+            <div className="mobile-center">
               <Title level={2} style={{ margin: 0 }}>
                 Room Management
               </Title>
@@ -257,20 +257,22 @@ const RoomManagement = () => {
             </div>
           </Space>
         </Col>
-        <Col>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAdd}
-          >
-            Add Room
-          </Button>
+        <Col xs={24} lg={8}>
+          <div className="admin-actions" style={{ textAlign: 'right' }}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleAdd}
+            >
+              Add Room
+            </Button>
+          </div>
         </Col>
       </Row>
 
       {/* Search and Filters */}
       <Card>
-        <Row gutter={16}>
+        <Row gutter={16} className="admin-filters">
           <Col xs={24} sm={12} md={8}>
             <Input
               placeholder="Search rooms..."

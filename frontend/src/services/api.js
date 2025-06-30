@@ -319,6 +319,10 @@ export const routinesAPI = {
   clearSpanGroup: (spanId) =>
     api.delete(`/routines/clear-span-group/${spanId}`),
     
+  // Clear entire weekly routine for a program/semester/section
+  clearEntireRoutine: (programCode, semester, section) =>
+    api.delete(`/routines/${programCode}/${semester}/${section}/clear-all`),
+    
   // Check teacher availability
   checkTeacherAvailability: (teacherId, dayIndex, slotIndex) =>
     api.get(`/routines/teachers/${teacherId}/availability?dayIndex=${dayIndex}&slotIndex=${slotIndex}`),

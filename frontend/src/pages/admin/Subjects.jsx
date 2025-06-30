@@ -9,14 +9,18 @@ import {
   Row,
   Col,
   Empty,
-  Spin
+  Spin,
+  Alert,
+  Statistic
 } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import {
   ReadOutlined,
   PlusOutlined,
   EditOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  BookOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 import { subjectsAPI } from '../../services/api';
 
@@ -175,11 +179,11 @@ const Subjects = () => {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: '16px' }}>
-        <Col>
-          <Space align="center" size="middle">
+      <Row justify="space-between" align="middle" className="admin-page-header mobile-stack" style={{ marginBottom: '16px' }}>
+        <Col xs={24} lg={16}>
+          <Space align="center" size="middle" className="mobile-stack-vertical">
             <ReadOutlined style={{ fontSize: '32px', color: '#722ed1' }} />
-            <div>
+            <div className="mobile-center">
               <Title level={2} style={{ margin: 0 }}>
                 Subjects
               </Title>
@@ -189,16 +193,18 @@ const Subjects = () => {
             </div>
           </Space>
         </Col>
-        <Col>
-          <Button 
-            type="primary" 
-            size="large"
-            icon={<PlusOutlined />}
-            onClick={handleAddNew}
-            style={{ borderRadius: '6px' }}
-          >
-            Add New Subject
-          </Button>
+        <Col xs={24} lg={8}>
+          <div className="admin-actions" style={{ textAlign: 'right' }}>
+            <Button 
+              type="primary" 
+              size="large"
+              icon={<PlusOutlined />}
+              onClick={handleAddNew}
+              style={{ borderRadius: '6px' }}
+            >
+              Add New Subject
+            </Button>
+          </div>
         </Col>
       </Row>
 

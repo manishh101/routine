@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Select, Card, Typography, Button, Alert, message, Space, Row, Col, Spin, Tag, Statistic, Modal, Form } from 'antd';
+import { Select, Card, Typography, Button, Alert, message, Space, Row, Col, Spin, Tag, Statistic } from 'antd';
 import { PlusOutlined, CalendarOutlined, BookOutlined, ClockCircleOutlined, TeamOutlined, ReloadOutlined } from '@ant-design/icons';
 import RoutineGrid from '../../components/RoutineGrid';
 import AssignClassModal from '../../components/AssignClassModal';
@@ -37,10 +37,6 @@ const ProgramRoutineManager = () => {
   // Modal state
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
-  
-  // Day/Time selection modal state
-  const [dayTimeSelectionVisible, setDayTimeSelectionVisible] = useState(false);
-  const [selectedDayTime, setSelectedDayTime] = useState({ dayIndex: 0, slotIndex: 0 });
   
   // Force refresh key for immediate UI updates
   const [refreshKey, setRefreshKey] = useState(0);
@@ -101,29 +97,10 @@ const ProgramRoutineManager = () => {
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  // Enhanced handle cell click with better error handling and validation
+  // Handle cell click to open modal
   const handleCellClick = (dayIndex, slotIndex, existingClassData = null) => {
     console.log('Cell clicked:', { dayIndex, slotIndex, existingClassData });
     console.log('Selected program/semester/section:', { selectedProgram, selectedSemester, selectedSection });
-    
-    // Validate input parameters
-    if (dayIndex === null || dayIndex === undefined || slotIndex === null || slotIndex === undefined) {
-      message.error('Invalid cell selection. Please try again.');
-      return;
-    }
-
-    // Validate that program/semester/section are selected
-    if (!selectedProgram || !selectedSemester || !selectedSection) {
-      message.error('Please select Program, Semester, and Section first.');
-      return;
-    }
-
-    // Validate day/time selection
-    const validationErrors = validateDayTimeSelection(dayIndex, slotIndex);
-    if (validationErrors.length > 0) {
-      message.error(validationErrors.join(', '));
-      return;
-    }
     
     const cellData = {
       dayIndex,
@@ -146,61 +123,25 @@ const ProgramRoutineManager = () => {
     setSelectedCell(null);
   };
 
-  // Enhanced handle assignment success with comprehensive cache invalidation and error handling
-  const handleAssignmentSuccess = async () => {
-    try {
-      console.log('Class assignment successful - updating UI and cache');
-      
-      // Close modal first
-      handleModalClose();
-      
-      // Show success message
-      message.success('Class assigned successfully!');
-      
-      // Refetch routine data to show updated grid
-      await refetchRoutine();
-      
-      // Comprehensive cache invalidation to ensure data consistency
-      await Promise.all([
-        // Invalidate all teacher schedules
-        queryClient.invalidateQueries(['teacherSchedules']),
-        queryClient.invalidateQueries({ queryKey: ['teacherSchedule'] }),
-        
-        // Invalidate routine-specific queries
-        queryClient.invalidateQueries(['routine', selectedProgram, selectedSemester, selectedSection]),
-        
-        // Invalidate all teacher-specific schedules
-        queryClient.invalidateQueries({ 
-          predicate: (query) => {
-            return query.queryKey[0] === 'teacherSchedule' || 
-                   query.queryKey[0] === 'teacher';
-          }
-        }),
-        
-        // Invalidate room availability queries
-        queryClient.invalidateQueries({ 
-          predicate: (query) => {
-            return query.queryKey.includes('roomAvailability');
-          }
-        }),
-        
-        // Invalidate teacher availability queries
-        queryClient.invalidateQueries({ 
-          predicate: (query) => {
-            return query.queryKey.includes('teacherAvailability');
-          }
-        })
-      ]);
-      
-      // Force refresh as fallback
-      forceRefresh();
-      
-      console.log("Cache invalidation completed successfully");
-      
-    } catch (error) {
-      console.error('Error during assignment success handling:', error);
-      message.error('Class assigned but there was an issue updating the display. Please refresh the page.');
-    }
+  // Handle successful assignment/update - called by modal on success
+  const handleAssignmentSuccess = () => {
+    handleModalClose();
+    // Refetch routine data to show updated grid
+    refetchRoutine();
+    
+    // Invalidate all teacher schedules to ensure data consistency across the app
+    queryClient.invalidateQueries(['teacherSchedules']);
+    
+    // Invalidate all teacher-specific schedules with any key pattern
+    queryClient.invalidateQueries({ queryKey: ['teacherSchedule'] });
+    
+    // Also invalidate the specific pattern used in TeacherRoutinePage
+    queryClient.invalidateQueries({ predicate: (query) => {
+      return query.queryKey[0] === 'teacherSchedule' || 
+             query.queryKey[0] === 'teacher';
+    }});
+    
+    console.log("Invalidated all teacher-related cache keys for data consistency");
   };
 
   // Reset selections
@@ -210,52 +151,8 @@ const ProgramRoutineManager = () => {
     setSelectedSection(null);
   };
 
-  // Enhanced helper function to check if a slot is already occupied
-  const isSlotOccupied = (dayIndex, slotIndex) => {
-    if (!routineData || !routineData.routine) return false;
-    
-    const day = routineData.routine[dayIndex];
-    if (!day) return false;
-    
-    const slot = day[slotIndex];
-    return !!slot;
-  };
-
-  // Helper function to get slot details
-  const getSlotDetails = (dayIndex, slotIndex) => {
-    if (!routineData || !routineData.routine) return null;
-    
-    const day = routineData.routine[dayIndex];
-    if (!day) return null;
-    
-    return day[slotIndex] || null;
-  };
-
-  // Enhanced validation for day/time selection
-  const validateDayTimeSelection = (dayIndex, slotIndex) => {
-    const errors = [];
-
-    // Check if it's a valid day
-    if (dayIndex < 0 || dayIndex > 6) {
-      errors.push('Invalid day selected');
-    }
-
-    // Check if time slot exists
-    if (!timeSlotsData?.data || slotIndex >= timeSlotsData.data.length) {
-      errors.push('Invalid time slot selected');
-    }
-
-    // Check if it's a break time
-    const timeSlot = timeSlotsData?.data?.[slotIndex];
-    if (timeSlot?.isBreak) {
-      errors.push('Cannot assign classes during break time');
-    }
-
-    return errors;
-  };
-
   return (
-    <div className="program-routine-manager mobile-stack-vertical" style={{ background: '#f5f7fa', minHeight: '100vh', padding: '24px' }}>
+    <div className="program-routine-manager" style={{ background: '#f5f7fa', minHeight: '100vh', padding: '24px' }}>
       <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: '1800px', margin: '0 auto' }}>
         
         {/* Modern Header Section */}
@@ -268,10 +165,10 @@ const ProgramRoutineManager = () => {
             color: 'white'
           }}
         >
-          <Row gutter={[32, 24]} align="middle" className="mobile-stack">
+          <Row gutter={[32, 24]} align="middle">
             <Col xs={24} lg={14}>
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }} className="mobile-stack-vertical mobile-center">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{
                     background: 'rgba(255, 255, 255, 0.2)',
                     borderRadius: '12px',
@@ -282,7 +179,7 @@ const ProgramRoutineManager = () => {
                   }}>
                     <CalendarOutlined style={{ fontSize: '24px', color: 'white' }} />
                   </div>
-                  <div className="mobile-center">
+                  <div>
                     <Title level={1} style={{ margin: 0, color: 'white', fontSize: '32px', fontWeight: '700' }}>
                       Program Routine Manager
                     </Title>
@@ -295,7 +192,7 @@ const ProgramRoutineManager = () => {
             </Col>
             
             <Col xs={24} lg={10}>
-              <div className="routine-controls" style={{
+              <div style={{
                 background: 'rgba(255, 255, 255, 0.15)',
                 borderRadius: '12px',
                 padding: '24px',
@@ -303,7 +200,7 @@ const ProgramRoutineManager = () => {
               }}>
                 <Space direction="vertical" size="medium" style={{ width: '100%' }}>
                   <Text strong style={{ color: 'white', fontSize: '16px', display: 'block' }}>
-                    Configure Class Schedule
+                    🎯 Configure Class Schedule
                   </Text>
                   
                   <Select
@@ -469,15 +366,12 @@ const ProgramRoutineManager = () => {
               borderBottom: '1px solid #f0f2f5',
               padding: '20px 24px'
             }}
-            bodyStyle={{
-              padding: '4px 8px'
-            }}
             extra={
               <Space>
                 <Button 
                   type="primary" 
                   icon={<PlusOutlined />}
-                  onClick={() => setDayTimeSelectionVisible(true)}
+                  onClick={() => handleCellClick(0, 0, null)}
                   style={{ borderRadius: '8px', height: '40px' }}
                 >
                   Add New Class
@@ -557,7 +451,7 @@ const ProgramRoutineManager = () => {
             <div style={{ 
               background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
               borderRadius: '12px',
-              padding: '4px 6px' 
+              padding: '12px 8px' 
             }}>
               <RoutineGrid
                 programCode={selectedProgram}
@@ -595,7 +489,7 @@ const ProgramRoutineManager = () => {
               </div>
               
               <Title level={3} style={{ color: '#1a1a1a', marginBottom: '16px' }}>
-                Create a Class Schedule
+                🚀 Create a Class Schedule
               </Title>
               
               <Text style={{ fontSize: '16px', color: '#666', display: 'block', marginBottom: '32px' }}>
@@ -673,243 +567,6 @@ const ProgramRoutineManager = () => {
           existingClass={selectedCell.existingClass}
           loading={false}
         />
-      )}
-
-      {/* Enhanced Day/Time Selection Modal */}
-      {dayTimeSelectionVisible && (
-        <Modal
-          title={
-            <Space>
-              <CalendarOutlined />
-              <span>Select Day and Time Slot</span>
-            </Space>
-          }
-          open={dayTimeSelectionVisible}
-          onCancel={() => setDayTimeSelectionVisible(false)}
-          footer={[
-            <Button key="cancel" onClick={() => setDayTimeSelectionVisible(false)}>
-              Cancel
-            </Button>,
-            <Button 
-              key="submit" 
-              type="primary"
-              disabled={
-                selectedDayTime.dayIndex === null || 
-                selectedDayTime.slotIndex === null ||
-                validateDayTimeSelection(selectedDayTime.dayIndex, selectedDayTime.slotIndex).length > 0
-              }
-              onClick={() => {
-                const validationErrors = validateDayTimeSelection(selectedDayTime.dayIndex, selectedDayTime.slotIndex);
-                if (validationErrors.length > 0) {
-                  message.error(validationErrors.join(', '));
-                  return;
-                }
-                
-                setDayTimeSelectionVisible(false);
-                handleCellClick(selectedDayTime.dayIndex, selectedDayTime.slotIndex, null);
-              }}
-            >
-              Continue to Assign Class
-            </Button>
-          ]}
-          width={600}
-        >
-          <Space direction="vertical" style={{ width: '100%' }} size="large">
-            {/* Info Card */}
-            <Card size="small" style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
-              <Row gutter={16}>
-                <Col span={8}>
-                  <Text strong>Program:</Text> {selectedProgram}
-                </Col>
-                <Col span={8}>
-                  <Text strong>Semester:</Text> {selectedSemester}
-                </Col>
-                <Col span={8}>
-                  <Text strong>Section:</Text> {selectedSection}
-                </Col>
-              </Row>
-            </Card>
-
-            <Form layout="vertical">
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item 
-                    label={
-                      <Space>
-                        <CalendarOutlined />
-                        <span>Day</span>
-                      </Space>
-                    }
-                    required
-                  >
-                    <Select
-                      value={selectedDayTime.dayIndex}
-                      onChange={(value) => setSelectedDayTime({...selectedDayTime, dayIndex: value})}
-                      style={{ width: '100%' }}
-                      placeholder="Select day"
-                    >
-                      <Option value={0}>Sunday</Option>
-                      <Option value={1}>Monday</Option>
-                      <Option value={2}>Tuesday</Option>
-                      <Option value={3}>Wednesday</Option>
-                      <Option value={4}>Thursday</Option>
-                      <Option value={5}>Friday</Option>
-                      <Option value={6}>Saturday</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item 
-                    label={
-                      <Space>
-                        <ClockCircleOutlined />
-                        <span>Time Slot</span>
-                      </Space>
-                    }
-                    required
-                  >
-                    <Select
-                      value={selectedDayTime.slotIndex}
-                      onChange={(value) => setSelectedDayTime({...selectedDayTime, slotIndex: value})}
-                      style={{ width: '100%' }}
-                      placeholder="Select time slot"
-                      loading={!timeSlotsData?.data}
-                    >
-                      {(timeSlotsData?.data || []).map((slot, index) => (
-                        <Option 
-                          key={index} 
-                          value={index}
-                          disabled={slot.isBreak}
-                        >
-                          <Space>
-                            <span>{slot.startTime} - {slot.endTime}</span>
-                            {slot.isBreak && <Tag color="orange">Break</Tag>}
-                          </Space>
-                        </Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Form>
-            
-            {/* Enhanced slot status indicator */}
-            {routineData && selectedDayTime.dayIndex !== null && selectedDayTime.slotIndex !== null && (
-              <div>
-                {(() => {
-                  const validationErrors = validateDayTimeSelection(selectedDayTime.dayIndex, selectedDayTime.slotIndex);
-                  const isOccupied = isSlotOccupied(selectedDayTime.dayIndex, selectedDayTime.slotIndex);
-                  const slotDetails = getSlotDetails(selectedDayTime.dayIndex, selectedDayTime.slotIndex);
-                  
-                  if (validationErrors.length > 0) {
-                    return (
-                      <Alert
-                        type="error"
-                        message="Invalid Selection"
-                        description={validationErrors.join(', ')}
-                        showIcon
-                      />
-                    );
-                  }
-                  
-                  if (isOccupied && slotDetails) {
-                    return (
-                      <Alert
-                        type="warning"
-                        message="Slot Already Occupied"
-                        description={
-                          <div>
-                            <div><strong>Subject:</strong> {slotDetails.subjectName}</div>
-                            <div><strong>Teacher:</strong> {Array.isArray(slotDetails.teacherNames) ? slotDetails.teacherNames.join(', ') : slotDetails.teacherNames}</div>
-                            <div><strong>Room:</strong> {slotDetails.roomName}</div>
-                            <div style={{ marginTop: '8px' }}>
-                              Continuing will let you edit or replace the existing class.
-                            </div>
-                          </div>
-                        }
-                        showIcon
-                      />
-                    );
-                  }
-                  
-                  return (
-                    <Alert
-                      type="success"
-                      message="Slot Available"
-                      description="This time slot is available for a new class assignment."
-                      showIcon
-                    />
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* Quick slot availability overview */}
-            {selectedDayTime.dayIndex !== null && (
-              <Card 
-                size="small" 
-                title={
-                  <Space>
-                    <CalendarOutlined />
-                    <span>
-                      {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][selectedDayTime.dayIndex]} 
-                      Schedule Overview
-                    </span>
-                  </Space>
-                }
-                style={{ backgroundColor: '#fafafa' }}
-              >
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {(timeSlotsData?.data || []).map((slot, index) => {
-                    const isCurrentSlot = index === selectedDayTime.slotIndex;
-                    const isOccupied = isSlotOccupied(selectedDayTime.dayIndex, index);
-                    const isBreak = slot.isBreak;
-                    
-                    let color = 'default';
-                    let text = 'Free';
-                    
-                    if (isBreak) {
-                      color = 'orange';
-                      text = 'Break';
-                    } else if (isOccupied) {
-                      color = 'red';
-                      text = 'Occupied';
-                    } else {
-                      color = 'green';
-                      text = 'Free';
-                    }
-                    
-                    if (isCurrentSlot) {
-                      color = 'blue';
-                    }
-                    
-                    return (
-                      <Tag 
-                        key={index} 
-                        color={color}
-                        style={{ 
-                          margin: '2px',
-                          cursor: isBreak ? 'not-allowed' : 'pointer',
-                          border: isCurrentSlot ? '2px solid #1890ff' : undefined
-                        }}
-                        onClick={() => {
-                          if (!isBreak) {
-                            setSelectedDayTime({...selectedDayTime, slotIndex: index});
-                          }
-                        }}
-                      >
-                        {slot.startTime} {isCurrentSlot && '(Selected)'}
-                      </Tag>
-                    );
-                  })}
-                </div>
-                <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
-                  Click on any time slot above to select it quickly
-                </div>
-              </Card>
-            )}
-          </Space>
-        </Modal>
       )}
     </div>
   );

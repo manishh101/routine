@@ -365,8 +365,144 @@ const AssignClassModal = ({
     setChecking(false);
   };
 
+  // Enhanced comprehensive conflict checking
+  const checkAllConflicts = async (values) => {
+    if (!values.subjectId || !values.teacherIds?.length || !values.roomId || !values.classType) {
+      setConflicts([]);
+      return;
+    }
+
+    setChecking(true);
+    try {
+      const conflictChecks = [];
+
+      // Check teacher availability for lecture/tutorial classes
+      if (values.classType === 'L' || values.classType === 'T') {
+        for (const teacherId of values.teacherIds) {
+          conflictChecks.push(
+            routinesAPI.checkTeacherAvailability(teacherId, dayIndex, slotIndex)
+              .then(response => ({
+                type: 'teacher',
+                id: teacherId,
+                name: teachers.find(t => t._id === teacherId)?.fullName || 'Unknown Teacher',
+                available: response.data.available,
+                conflictDetails: response.data.conflictDetails
+              }))
+              .catch(error => {
+                console.warn(`Error checking teacher ${teacherId} availability:`, error);
+                return {
+                  type: 'teacher',
+                  id: teacherId,
+                  name: teachers.find(t => t._id === teacherId)?.fullName || 'Unknown Teacher',
+                  available: true, // Assume available if check fails
+                  error: error.message
+                };
+              })
+          );
+        }
+      }
+
+      // Check room availability
+      conflictChecks.push(
+        routinesAPI.checkRoomAvailability(values.roomId, dayIndex, slotIndex)
+          .then(response => ({
+            type: 'room',
+            id: values.roomId,
+            name: rooms.find(r => r._id === values.roomId)?.name || 'Unknown Room',
+            available: response.data.available,
+            conflictDetails: response.data.conflictDetails
+          }))
+          .catch(error => {
+            console.warn(`Error checking room ${values.roomId} availability:`, error);
+            return {
+              type: 'room',
+              id: values.roomId,
+              name: rooms.find(r => r._id === values.roomId)?.name || 'Unknown Room',
+              available: true, // Assume available if check fails
+              error: error.message
+            };
+          })
+      );
+
+      const results = await Promise.all(conflictChecks);
+      const newConflicts = results.filter(result => !result.available);
+      setConflicts(newConflicts);
+
+      // Update available teachers and rooms for smart filtering
+      const unavailableTeacherIds = results
+        .filter(r => r.type === 'teacher' && !r.available)
+        .map(r => r.id);
+      
+      setAvailableTeachers(teachers.map(teacher => ({
+        ...teacher,
+        isAvailable: !unavailableTeacherIds.includes(teacher._id),
+        reason: unavailableTeacherIds.includes(teacher._id) ? 'Busy in this slot' : 'Available'
+      })));
+
+      const unavailableRoomIds = results
+        .filter(r => r.type === 'room' && !r.available)
+        .map(r => r.id);
+      
+      setAvailableRooms(rooms.map(room => ({
+        ...room,
+        isAvailable: !unavailableRoomIds.includes(room._id),
+        reason: unavailableRoomIds.includes(room._id) ? 'Occupied in this slot' : 'Available'
+      })));
+
+    } catch (error) {
+      console.error('Error during comprehensive conflict checking:', error);
+      message.error('Error checking for conflicts. Please verify your selections manually.');
+    }
+    setChecking(false);
+  };
+
+  // Enhanced form validation
+  const validateForm = (values) => {
+    const errors = [];
+
+    if (!values.subjectId) {
+      errors.push('Subject is required');
+    }
+
+    if (!values.classType) {
+      errors.push('Class type is required');
+    }
+
+    if (!values.teacherIds || values.teacherIds.length === 0) {
+      errors.push('At least one teacher must be selected');
+    }
+
+    if (!values.roomId) {
+      errors.push('Room is required');
+    }
+
+    // Validate teacher-subject compatibility (if business rules exist)
+    if (values.subjectId && values.teacherIds?.length > 0) {
+      // This could be enhanced with subject-teacher compatibility checks
+      // For now, we'll assume all teachers can teach all subjects
+    }
+
+    // Validate room capacity for class type
+    if (values.roomId && values.classType) {
+      const selectedRoom = rooms.find(r => r._id === values.roomId);
+      if (selectedRoom) {
+        // Business rule examples:
+        // - Labs might require specific room types
+        // - Large lectures might require rooms with higher capacity
+        if (values.classType === 'P' && selectedRoom.type && !selectedRoom.type.toLowerCase().includes('lab')) {
+          errors.push('Practical classes should typically be assigned to lab rooms');
+        }
+      }
+    }
+
+    return errors;
+  };
+
+  // Enhanced form change handler with comprehensive validation
   const handleFormChange = (changedValues, allValues) => {
-    // If class type changed, update teacher filtering
+    console.log('Form values changed:', changedValues, 'All values:', allValues);
+
+    // Handle class type change
     if (changedValues.classType !== undefined) {
       console.log('Class type changed to:', changedValues.classType);
       filterTeachersBasedOnClassType(changedValues.classType);
@@ -377,17 +513,22 @@ const AssignClassModal = ({
       }
     }
     
-    // Debounce conflict checking for room availability
+    // Debounced comprehensive conflict checking
     const timeoutId = setTimeout(() => {
-      if (allValues.roomId) {
-        checkRoomConflicts(allValues);
+      if (allValues.subjectId && allValues.classType && allValues.teacherIds?.length > 0 && allValues.roomId) {
+        checkAllConflicts(allValues);
+      } else {
+        setConflicts([]); // Clear conflicts if form is incomplete
       }
-    }, 500);
+    }, 500); // 500ms delay to avoid too many API calls
+    
     return () => clearTimeout(timeoutId);
   };
 
+  // Enhanced form submission with comprehensive validation
   const handleSubmit = async () => {
     try {
+      // First validate the form fields
       const values = await form.validateFields();
       
       console.log('Form submission - Debug:', {
@@ -398,10 +539,17 @@ const AssignClassModal = ({
           filteredTeachers.find(t => t._id === id)?.fullName
         )
       });
+
+      // Perform additional custom validation
+      const validationErrors = validateForm(values);
+      if (validationErrors.length > 0) {
+        message.error(validationErrors.join(', '));
+        return;
+      }
       
       // For practical classes, we allow conflicts since multiple teachers can work together
       if (currentClassType === 'P') {
-        console.log('Lab/Practical class - proceeding without conflict check');
+        console.log('Lab/Practical class - proceeding without strict conflict check');
         onSave(values);
         return;
       }
@@ -413,7 +561,7 @@ const AssignClassModal = ({
       }) || [];
       
       const hasTeacherConflicts = selectedUnavailableTeachers.length > 0;
-      const hasRoomConflicts = conflicts.length > 0;
+      const hasRoomConflicts = conflicts.some(c => c.type === 'room' && !c.available);
       
       if (hasTeacherConflicts || hasRoomConflicts) {
         const conflictMessages = [];
@@ -426,20 +574,46 @@ const AssignClassModal = ({
         }
         
         if (hasRoomConflicts) {
-          conflictMessages.push(`Room is already occupied`);
+          const conflictedRooms = conflicts.filter(c => c.type === 'room' && !c.available);
+          conflictMessages.push(`Room conflicts: ${conflictedRooms.map(c => c.name).join(', ')}`);
         }
         
+        // Show detailed conflict confirmation dialog
         modal.confirm({
           title: 'Scheduling Conflicts Detected',
+          width: 600,
           content: (
             <div>
-              <p>The following conflicts were detected:</p>
+              <p><strong>The following conflicts were detected:</strong></p>
               <ul>
-                {Array.isArray(conflictMessages) && conflictMessages.map((msg, index) => (
-                  <li key={index}>{msg}</li>
+                {conflictMessages.map((msg, index) => (
+                  <li key={index} style={{ color: '#ff4d4f', marginBottom: '8px' }}>
+                    {msg}
+                  </li>
                 ))}
               </ul>
-              <p>Do you want to proceed anyway?</p>
+              
+              {/* Show detailed conflict information */}
+              {conflicts.length > 0 && (
+                <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#fff2f0', borderRadius: '6px' }}>
+                  <strong>Conflict Details:</strong>
+                  {conflicts.map((conflict, index) => (
+                    <div key={index} style={{ marginTop: '8px', fontSize: '13px' }}>
+                      <strong>{conflict.name}</strong> is already assigned to:
+                      {conflict.conflictDetails && (
+                        <div style={{ marginLeft: '12px', color: '#666' }}>
+                          {conflict.conflictDetails.programCode} - Semester {conflict.conflictDetails.semester} - Section {conflict.conflictDetails.section}
+                          {conflict.conflictDetails.subjectName && ` (${conflict.conflictDetails.subjectName})`}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              <p style={{ marginTop: '16px' }}>
+                <strong>Do you want to proceed anyway?</strong> This may cause scheduling conflicts.
+              </p>
             </div>
           ),
           okText: 'Proceed Anyway',
@@ -448,11 +622,18 @@ const AssignClassModal = ({
           onOk: () => onSave(values)
         });
       } else {
+        // No conflicts, proceed with saving
         onSave(values);
       }
     } catch (error) {
-      console.error('Form validation failed:', error);
-      message.error('Please fill in all required fields');
+      console.error('Form submission error:', error);
+      if (error.errorFields) {
+        // Form validation errors
+        const errorMessages = error.errorFields.map(field => field.errors.join(', ')).join('; ');
+        message.error(`Please fix the following errors: ${errorMessages}`);
+      } else {
+        message.error('Please fill in all required fields correctly');
+      }
     }
   };
 

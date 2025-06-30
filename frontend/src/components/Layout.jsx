@@ -17,15 +17,47 @@ import {
   FileExcelOutlined
 } from '@ant-design/icons';
 import useAuthStore from '../contexts/authStore';
+import './MobileResponsive.css';
 
 const { Header, Sider, Content } = AntLayout;
 const { Title, Text } = Typography;
 
 const Layout = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileDrawerVisible, setMobileDrawerVisible] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, setUser } = useAuthStore();
+
+  // Handle screen size changes for responsiveness
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      setIsMobile(width <= 768); // Use <= 768 for consistent mobile detection
+      
+      // Auto-collapse sidebar on tablet and smaller screens
+      if (width < 1024) {
+        setCollapsed(true);
+      } else {
+        setCollapsed(false);
+      }
+      
+      // Close mobile drawer when screen becomes large
+      if (width >= 768) {
+        setMobileDrawerVisible(false);
+      }
+    };
+
+    // Initial check
+    handleResize();
+    
+    // Add event listener
+    window.addEventListener('resize', handleResize);
+    
+    // Cleanup
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Sync Zustand user state with localStorage on mount and storage events
   useEffect(() => {
@@ -69,18 +101,18 @@ const Layout = () => {
       label: 'Teacher Schedule',
       title: collapsed ? 'Teacher Schedule' : undefined
     },
-    { 
-      key: '/excel-demo', 
-      icon: <FileExcelOutlined />, 
-      label: 'Excel Demo',
-      title: collapsed ? 'Excel Demo' : undefined
-    },
-    { 
-      key: '/teacher-excel-demo', 
-      icon: <FileExcelOutlined />, 
-      label: 'Teacher Excel Demo',
-      title: collapsed ? 'Teacher Excel Demo' : undefined
-    },
+    // { 
+    //   key: '/excel-demo', 
+    //   icon: <FileExcelOutlined />, 
+    //   label: 'Excel Demo',
+    //   title: collapsed ? 'Excel Demo' : undefined
+    // },
+    // { 
+    //   key: '/teacher-excel-demo', 
+    //   icon: <FileExcelOutlined />, 
+    //   label: 'Teacher Excel Demo',
+    //   title: collapsed ? 'Teacher Excel Demo' : undefined
+    // },
   ];
 
   // Admin-only menu items
@@ -136,12 +168,12 @@ const Layout = () => {
       label: 'Time Slots',
       title: collapsed ? 'Time Slots' : undefined
     },
-    { 
-      key: '/excel-demo-admin', 
-      icon: <FileExcelOutlined />, 
-      label: 'Excel Demo (Admin)',
-      title: collapsed ? 'Excel Demo (Admin)' : undefined
-    },
+    // { 
+    //   key: '/excel-demo-admin', 
+    //   icon: <FileExcelOutlined />, 
+    //   label: 'Excel Demo (Admin)',
+    //   title: collapsed ? 'Excel Demo (Admin)' : undefined
+    // },
   ];
 
   // Combine menu items based on user role
@@ -171,11 +203,27 @@ const Layout = () => {
 
   const handleMenuClick = ({ key }) => {
     navigate(key);
+    // Close mobile drawer after navigation
+    if (isMobile) {
+      setMobileDrawerVisible(false);
+    }
   };
 
   const handleLogout = () => {
     logout();
-    navigate('/admin/login'); // Redirect to login after logout
+    navigate('/'); // Redirect to general dashboard after logout
+    // Close mobile drawer after logout
+    if (isMobile) {
+      setMobileDrawerVisible(false);
+    }
+  };
+
+  const toggleSidebar = () => {
+    if (isMobile) {
+      setMobileDrawerVisible(!mobileDrawerVisible);
+    } else {
+      setCollapsed(!collapsed);
+    }
   };
 
   const userMenuItems = user ? [
@@ -320,50 +368,162 @@ const Layout = () => {
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
-      <Sider
-        collapsible
-        collapsed={collapsed}
-        onCollapse={setCollapsed}
-        trigger={null}
-        theme="light"
-        width={240}
-        collapsedWidth={72}
-        style={{
-          boxShadow: '2px 0 5px rgba(0, 0, 0, 0.1)',
-          position: 'fixed',
-          height: '100vh',
-          left: 0,
-          top: 56, // Start below header like YouTube
-          bottom: 0,
-          zIndex: 1000,
-          background: '#ffffff',
-          borderRight: '1px solid #e5e5e5',
-          transition: 'all 0.2s ease',
-        }}
-      >
-        <Menu
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          defaultSelectedKeys={[location.pathname]}
-          items={menuItems}
-          onClick={handleMenuClick}
-          inlineCollapsed={collapsed}
-          style={{ 
-            borderRight: 0, 
-            height: '100%', 
-            overflowY: 'auto',
-            background: 'transparent',
-            padding: '8px 0',
+      {/* Desktop Sidebar */}
+      {!isMobile && (
+        <Sider
+          collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          trigger={null}
+          theme="light"
+          width={240}
+          collapsedWidth={72}
+          style={{
+            boxShadow: '2px 0 5px rgba(0, 0, 0, 0.1)',
+            position: 'fixed',
+            height: '100vh',
+            left: 0,
+            top: 56,
+            bottom: 0,
+            zIndex: 1000,
+            background: '#ffffff',
+            borderRight: '1px solid #e5e5e5',
+            transition: 'all 0.2s ease',
           }}
-        />
-      </Sider>
+        >
+          <Menu
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            defaultSelectedKeys={[location.pathname]}
+            items={menuItems}
+            onClick={handleMenuClick}
+            inlineCollapsed={collapsed}
+            style={{ 
+              borderRight: 0, 
+              height: '100%', 
+              overflowY: 'auto',
+              background: 'transparent',
+              padding: '8px 0',
+            }}
+          />
+        </Sider>
+      )}
+
+      {/* Mobile Drawer */}
+      {isMobile && (
+        <>
+          {/* Overlay */}
+          {mobileDrawerVisible && (
+            <div
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.5)',
+                zIndex: 1998,
+                transition: 'opacity 0.3s ease'
+              }}
+              onClick={() => setMobileDrawerVisible(false)}
+            />
+          )}
+          
+          {/* Mobile Sidebar */}
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: mobileDrawerVisible ? 0 : '-280px',
+              width: '280px',
+              height: '100vh',
+              background: '#ffffff',
+              boxShadow: '2px 0 8px rgba(0, 0, 0, 0.15)',
+              zIndex: 1999,
+              transition: 'left 0.3s ease',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            {/* Mobile Header */}
+            <div style={{
+              height: '64px',
+              padding: '0 16px',
+              display: 'flex',
+              alignItems: 'center',
+              borderBottom: '1px solid #e5e5e5',
+              background: '#fafafa'
+            }}>
+              <div 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  flex: 1
+                }}
+                onClick={() => {
+                  navigate('/');
+                  setMobileDrawerVisible(false);
+                }}
+              >
+                <ScheduleOutlined style={{ 
+                  fontSize: '24px', 
+                  color: '#667eea',
+                  marginRight: '8px'
+                }} />
+                <span style={{ 
+                  fontSize: '18px',
+                  fontWeight: 600,
+                  color: '#333',
+                  letterSpacing: '-0.01em'
+                }}>
+                  Routine MS
+                </span>
+              </div>
+              <Button
+                type="text"
+                icon={<MenuFoldOutlined />}
+                onClick={() => setMobileDrawerVisible(false)}
+                style={{
+                  fontSize: '18px',
+                  color: '#666',
+                  minWidth: '44px',
+                  minHeight: '44px',
+                  width: '44px',
+                  height: '44px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              />
+            </div>
+
+            {/* Mobile Menu */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <Menu
+                mode="inline"
+                selectedKeys={[location.pathname]}
+                defaultSelectedKeys={[location.pathname]}
+                items={menuItems}
+                onClick={handleMenuClick}
+                style={{ 
+                  borderRight: 0,
+                  background: 'transparent',
+                  padding: '8px 0',
+                }}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
       <AntLayout style={{ 
-        marginLeft: collapsed ? 72 : 240, 
+        marginLeft: isMobile ? 0 : (collapsed ? 72 : 240), 
         transition: 'margin-left 0.2s ease' 
       }}>
         <Header style={{
           height: '56px',
-          padding: '0 16px',
+          padding: isMobile ? '0 12px' : '0 16px',
           background: '#ffffff',
           display: 'flex',
           alignItems: 'center',
@@ -377,20 +537,22 @@ const Layout = () => {
           borderBottom: '1px solid #e5e5e5',
         }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            {/* YouTube-style hamburger menu */}
+            {/* Hamburger menu button */}
             <Button
               type="text"
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed(!collapsed)}
+              icon={isMobile ? <MenuUnfoldOutlined /> : (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />)}
+              onClick={toggleSidebar}
               style={{ 
                 fontSize: '20px', 
-                width: 40, 
-                height: 40,
+                width: isMobile ? 44 : 40, 
+                height: isMobile ? 44 : 40,
+                minWidth: isMobile ? 44 : 40,
+                minHeight: isMobile ? 44 : 40,
                 borderRadius: '50%',
                 color: '#606060',
                 background: 'transparent',
                 border: 'none',
-                marginRight: '14px',
+                marginRight: isMobile ? '8px' : '14px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -403,7 +565,7 @@ const Layout = () => {
               }}
             />
             
-            {/* YouTube-style logo */}
+            {/* Logo */}
             <div 
               style={{ 
                 display: 'flex', 
@@ -413,16 +575,17 @@ const Layout = () => {
               onClick={() => navigate('/')}
             >
               <ScheduleOutlined style={{ 
-                fontSize: '28px', 
+                fontSize: isMobile ? '24px' : '28px', 
                 color: '#667eea',
-                marginRight: '8px'
+                marginRight: isMobile ? '6px' : '8px'
               }} />
               <span style={{ 
-                fontSize: '20px',
+                fontSize: isMobile ? '18px' : '20px',
                 fontWeight: 600,
                 color: '#333',
                 letterSpacing: '-0.01em',
-                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                display: isMobile && window.innerWidth < 480 ? 'none' : 'block'
               }}>
                 Routine MS
               </span>
@@ -519,19 +682,21 @@ const Layout = () => {
           )}
         </Header>
         <Content style={{
-          padding: '20px',
+          padding: isMobile ? '12px 8px' : '20px',
           background: '#f9f9f9',
           minHeight: 'calc(100vh - 56px)',
           marginTop: '56px',
           overflow: 'auto',
         }}>
           <div style={{
-            padding: '24px',
+            padding: isMobile ? '16px' : '24px',
             background: '#ffffff',
             borderRadius: '8px',
             boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
             minHeight: 'calc(100vh - 152px)',
             border: '1px solid #e5e5e5',
+            maxWidth: '100%',
+            overflowX: 'auto'
           }}>
             <Outlet />
           </div>

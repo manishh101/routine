@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { 
   Row, 
   Col, 
@@ -35,6 +35,20 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+  
+  // Mobile state
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Handle screen size changes for mobile optimization
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Memoize the fetch functions to prevent infinite re-renders
   const fetchTeachers = useCallback(async () => {
@@ -135,7 +149,7 @@ const Dashboard = () => {
   return (
     <div className="fade-in" style={{ width: '100%' }}>
       {/* Modern Header Section */}
-      <div style={{ 
+      <div className="dashboard-header" style={{ 
         marginBottom: '32px',
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         borderRadius: '16px',
@@ -154,32 +168,33 @@ const Dashboard = () => {
           borderRadius: '50%',
           transform: 'translate(50%, -50%)'
         }} />
-        <Row justify="space-between" align="center">
-          <Col>
-            <Space align="center" size="large">
+        <Row justify="space-between" align="center" className="mobile-stack">
+          <Col xs={24} lg={16}>
+            <Space align="center" size="large" className="mobile-stack-vertical mobile-center">
               <div style={{
-                width: '56px',
-                height: '56px',
+                width: isMobile ? '48px' : '56px',
+                height: isMobile ? '48px' : '56px',
                 background: 'rgba(255, 255, 255, 0.2)',
                 borderRadius: '16px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                <DashboardFilled style={{ fontSize: '28px', color: 'white' }} />
+                <DashboardFilled style={{ fontSize: isMobile ? '24px' : '28px', color: 'white' }} />
               </div>
-              <div>
+              <div className="mobile-center">
                 <Title level={1} style={{ 
                   margin: 0, 
                   color: 'white',
                   fontWeight: 700,
-                  letterSpacing: '-0.02em'
+                  letterSpacing: '-0.02em',
+                  fontSize: isMobile ? '24px' : '32px'
                 }}>
                   {isAdmin ? 'Admin Dashboard' : 'Welcome Back'}
                 </Title>
                 <Paragraph style={{ 
                   margin: '8px 0 0 0', 
-                  fontSize: '16px',
+                  fontSize: isMobile ? '14px' : '16px',
                   color: 'rgba(255, 255, 255, 0.9)',
                   fontWeight: 400
                 }}>
@@ -192,14 +207,16 @@ const Dashboard = () => {
             </Space>
           </Col>
           {isFetching && !isLoading && (
-            <Col>
+            <Col xs={24} lg={8}>
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '12px',
                 background: 'rgba(255, 255, 255, 0.2)',
                 padding: '8px 16px',
-                borderRadius: '8px'
+                borderRadius: '8px',
+                justifyContent: isMobile ? 'center' : 'flex-end',
+                marginTop: isMobile ? '16px' : '0'
               }}>
                 <Spin size="small" />
                 <Text style={{ color: 'white', fontSize: '14px' }}>Syncing data...</Text>
@@ -221,7 +238,7 @@ const Dashboard = () => {
       )}
 
       {/* Modern Statistics Cards */}
-      <Row gutter={[24, 24]} style={{ marginBottom: '32px' }}>
+      <Row gutter={[24, 24]} className="dashboard-stats" style={{ marginBottom: '32px' }}>
         {stats.map((stat) => (
           <Col xs={24} sm={12} lg={8} key={stat.title}>
             <Card
@@ -285,7 +302,7 @@ const Dashboard = () => {
         ))}
       </Row>
 
-      <Row gutter={[24, 24]}>
+      <Row gutter={[24, 24]} className="dashboard-content">
         {/* Quick Actions */}
         <Col xs={24} lg={12}>
           <Card 
@@ -293,10 +310,43 @@ const Dashboard = () => {
             style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', height: '100%' }}
             styles={{ body: { padding: '0 16px 16px 16px' } }}
           >
-            <List
-              itemLayout="horizontal"
-              dataSource={quickActions}
-              renderItem={(action) => (
+            {isMobile ? (
+              // Mobile: Show compact list
+              <Space direction="vertical" style={{ width: '100%' }} size="small">
+                {quickActions.slice(0, 3).map((action, index) => (
+                  <Button
+                    key={index}
+                    block
+                    size="large"
+                    type={index === 0 ? 'primary' : 'default'}
+                    icon={action.icon}
+                    onClick={() => navigate(action.path)}
+                    style={{
+                      height: '56px',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      background: index === 0 ? `${action.color}` : undefined,
+                      borderColor: action.color,
+                      color: index === 0 ? 'white' : action.color
+                    }}
+                  >
+                    <div style={{ marginLeft: '8px' }}>
+                      <div style={{ fontWeight: 600, fontSize: '14px' }}>{action.title}</div>
+                      <div style={{ fontSize: '12px', opacity: 0.8 }}>{action.description}</div>
+                    </div>
+                  </Button>
+                ))}
+              </Space>
+            ) : (
+              // Desktop: Show full list
+              <List
+                className="quick-actions-list"
+                itemLayout="horizontal"
+                dataSource={quickActions}
+                renderItem={(action) => (
                 <List.Item
                   actions={[<Button type="text" shape="circle" icon={<EyeOutlined />} onClick={() => navigate(action.path)} />]}
                   style={{padding: '12px 0'}}
@@ -319,6 +369,7 @@ const Dashboard = () => {
                 </List.Item>
               )}
             />
+            )}
           </Card>
         </Col>
 
@@ -329,26 +380,93 @@ const Dashboard = () => {
             style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', height: '100%' }}
             styles={{ body: { padding: '0 16px 16px 16px' } }}
           >
-            <List
-              itemLayout="horizontal"
-              dataSource={gettingStarted}
-              renderItem={(item, index) => (
-                <List.Item style={{padding: '12px 0'}}>
-                  <List.Item.Meta
-                    avatar={
-                      <Avatar 
-                        size={32} 
-                        style={{ backgroundColor: '#f0f0f0', color: '#666' }}
-                      >
-                        {index + 1}
-                      </Avatar>
-                    }
-                    title={<Text strong style={{fontSize: '14px'}}>{item.title}</Text>}
-                    description={<Text type="secondary" style={{fontSize: '13px'}}>{item.description}</Text>}
-                  />
-                </List.Item>
-              )}
-            />
+            {isMobile ? (
+              // Mobile: Compact step-by-step guide with cards
+              <Space direction="vertical" style={{ width: '100%' }} size="small">
+                {gettingStarted.map((item, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      background: index === 0 ? '#f0f9ff' : '#fafafa',
+                      border: `1px solid ${index === 0 ? '#0ea5e9' : '#e5e5e5'}`,
+                      borderRadius: '8px',
+                      padding: '12px',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '12px'
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        background: index === 0 ? '#0ea5e9' : '#d1d5db',
+                        color: 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        flexShrink: 0
+                      }}
+                    >
+                      {index + 1}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ 
+                        fontWeight: 600, 
+                        fontSize: '14px', 
+                        color: '#1f2937',
+                        marginBottom: '4px'
+                      }}>
+                        {item.title}
+                      </div>
+                      <div style={{ 
+                        fontSize: '12px', 
+                        color: '#6b7280',
+                        lineHeight: '1.4'
+                      }}>
+                        {item.description}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div style={{
+                  textAlign: 'center',
+                  marginTop: '12px',
+                  padding: '8px',
+                  background: '#f8fafc',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  color: '#64748b'
+                }}>
+                  Tip: Tap any action above to get started quickly
+                </div>
+              </Space>
+            ) : (
+              // Desktop: Original list layout
+              <List
+                itemLayout="horizontal"
+                dataSource={gettingStarted}
+                renderItem={(item, index) => (
+                  <List.Item style={{padding: '12px 0'}}>
+                    <List.Item.Meta
+                      avatar={
+                        <Avatar 
+                          size={32} 
+                          style={{ backgroundColor: '#f0f0f0', color: '#666' }}
+                        >
+                          {index + 1}
+                        </Avatar>
+                      }
+                      title={<Text strong style={{fontSize: '14px'}}>{item.title}</Text>}
+                      description={<Text type="secondary" style={{fontSize: '13px'}}>{item.description}</Text>}
+                    />
+                  </List.Item>
+                )}
+              />
+            )}
           </Card>
         </Col>
       </Row>

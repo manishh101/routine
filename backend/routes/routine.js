@@ -32,6 +32,7 @@ const {
   assignClassSpanned,
   clearClass,
   clearSpanGroup,
+  clearEntireRoutine,
   getProgramRoutines,
   checkRoomAvailability,
   checkTeacherAvailability,
@@ -145,6 +146,14 @@ router.post('/:programCode/:semester/:section/assign',
 router.delete('/:programCode/:semester/:section/clear', 
   [protect, authorize('admin'), clearClassValidation], 
   clearClass
+);
+
+// @route   DELETE /api/routines/:programCode/:semester/:section/clear-all
+// @desc    Clear entire weekly routine for a section
+// @access  Private/Admin
+router.delete('/:programCode/:semester/:section/clear-all',
+  [protect, authorize('admin')],
+  clearEntireRoutine
 );
 
 // @route   GET /api/routines/rooms/:roomId/availability

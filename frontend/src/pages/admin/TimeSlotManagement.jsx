@@ -246,11 +246,11 @@ const TimeSlotManagement = () => {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Header */}
-      <Row justify="space-between" align="middle">
-        <Col>
-          <Space align="center">
+      <Row justify="space-between" align="middle" className="admin-page-header mobile-stack">
+        <Col xs={24} lg={16}>
+          <Space align="center" className="mobile-stack-vertical">
             <ClockCircleOutlined style={{ fontSize: '32px', color: '#1677ff' }} />
-            <div>
+            <div className="mobile-center">
               <Title level={2} style={{ margin: 0 }}>
                 Time Slot Management
               </Title>
@@ -260,23 +260,25 @@ const TimeSlotManagement = () => {
             </div>
           </Space>
         </Col>
-        <Col>
-          <Space>
-            <Button
-              icon={<SettingOutlined />}
-              onClick={handleInitialize}
-              loading={initializeMutation.isLoading}
-            >
-              Initialize Default
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleAdd}
-            >
-              Add Time Slot
-            </Button>
-          </Space>
+        <Col xs={24} lg={8}>
+          <div className="admin-actions" style={{ textAlign: 'right' }}>
+            <Space className="mobile-full-width">
+              <Button
+                icon={<SettingOutlined />}
+                onClick={handleInitialize}
+                loading={initializeMutation.isLoading}
+              >
+                Initialize Default
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleAdd}
+              >
+                Add Time Slot
+              </Button>
+            </Space>
+          </div>
         </Col>
       </Row>
 

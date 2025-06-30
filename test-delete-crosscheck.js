@@ -68,8 +68,8 @@ async function testDeleteFunctionality() {
     // Test 7: Error handling
     console.log('✅ 8. Error Handling - Comprehensive error handling implemented');
 
-    console.log('\n🎉 Delete Functionality Cross-Check Completed!');
-    console.log('\n📋 Test Summary:');
+    console.log('\nDelete Functionality Cross-Check Completed!');
+    console.log('\nTest Summary:');
     console.log('- Individual delete buttons: ✅ Present and functional');
     console.log('- Clear All button: ✅ Successfully removed');
     console.log('- Keyboard shortcuts: ✅ Bulk delete shortcut removed');

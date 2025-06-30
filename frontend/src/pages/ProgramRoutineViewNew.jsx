@@ -218,11 +218,10 @@ const ProgramRoutineView = ({ teacherId = null }) => {
   // Render teacher mode UI
   if (teacherMode && teacher) {
     return (
-      <div className="teacher-routine mobile-stack-vertical" style={{ background: '#f5f7fa', minHeight: '100vh', padding: '24px' }}>
-        <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: '1800px', margin: '0 auto' }}>
+      <div className="teacher-routine" style={{ background: '#f5f7fa', minHeight: '100vh', padding: '24px' }}>
+        <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: '1400px', margin: '0 auto' }}>
           {/* Teacher Header Card */}
           <Card 
-            className="teacher-info"
             style={{
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               border: 'none',
@@ -231,7 +230,7 @@ const ProgramRoutineView = ({ teacherId = null }) => {
               color: 'white'
             }}
           >
-            <Row gutter={[32, 24]} align="middle" className="mobile-stack">
+            <Row gutter={[32, 24]} align="middle">
               <Col xs={24} lg={14}>
                 <Space direction="vertical" size="small" style={{ width: '100%' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -411,9 +410,6 @@ const ProgramRoutineView = ({ teacherId = null }) => {
               borderBottom: '1px solid #f0f2f5',
               padding: '20px 24px'
             }}
-            bodyStyle={{
-              padding: '4px 8px'
-            }}
           >
             {routineLoading ? (
               <div style={{ textAlign: 'center', padding: '60px 0' }}>
@@ -434,7 +430,7 @@ const ProgramRoutineView = ({ teacherId = null }) => {
               <div style={{ 
                 background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
                 borderRadius: '12px',
-                padding: '4px 6px' 
+                padding: '16px' 
               }}>
                 <RoutineGrid 
                   teacherViewMode={true}
@@ -457,8 +453,8 @@ const ProgramRoutineView = ({ teacherId = null }) => {
 
   // Render program view UI
   return (
-    <div className="program-routine-view mobile-stack-vertical" style={{ background: '#f5f7fa', minHeight: '100vh', padding: '24px' }}>
-      <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: '1800px', margin: '0 auto' }}>
+    <div className="program-routine-view" style={{ background: '#f5f7fa', minHeight: '100vh', padding: '24px' }}>
+      <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: '1400px', margin: '0 auto' }}>
         {/* Modern Header Section */}
         <Card 
           style={{
@@ -469,7 +465,7 @@ const ProgramRoutineView = ({ teacherId = null }) => {
             color: 'white'
           }}
         >
-          <Row gutter={[32, 24]} align="middle" className="mobile-stack">
+          <Row gutter={[32, 24]} align="middle">
             <Col xs={24} lg={14}>
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -496,7 +492,7 @@ const ProgramRoutineView = ({ teacherId = null }) => {
             </Col>
             
             <Col xs={24} lg={10}>
-              <div className="routine-controls" style={{
+              <div style={{
                 background: 'rgba(255, 255, 255, 0.15)',
                 borderRadius: '12px',
                 padding: '24px',
@@ -504,7 +500,7 @@ const ProgramRoutineView = ({ teacherId = null }) => {
               }}>
                 <Space direction="vertical" size="medium" style={{ width: '100%' }}>
                   <Text strong style={{ color: 'white', fontSize: '16px', display: 'block' }}>
-                    Select Class to View
+                    🎯 Select Class to View
                   </Text>
                   
                   <Select
@@ -666,9 +662,6 @@ const ProgramRoutineView = ({ teacherId = null }) => {
               borderBottom: '1px solid #f0f2f5',
               padding: '20px 24px'
             }}
-            bodyStyle={{
-              padding: '4px 8px'
-            }}
             extra={
               <Button
                 icon={<DownloadOutlined />}
@@ -704,7 +697,7 @@ const ProgramRoutineView = ({ teacherId = null }) => {
               <div style={{ 
                 background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
                 borderRadius: '12px',
-                padding: '4px 6px' 
+                padding: '16px' 
               }}>
                 <RoutineGrid
                   programCode={selectedProgram}

@@ -19,7 +19,7 @@ const TeacherExcelActions = ({ teacherId, teacherName = 'Teacher' }) => {
     setIsExporting(true);
     
     try {
-      console.log('🏗️ Starting teacher schedule export...');
+      console.log(' Starting teacher schedule export...');
       
       // Call the API to get the Excel file
       const response = await teachersAPI.exportTeacherSchedule(teacherId);

@@ -13,7 +13,7 @@ import TeacherScheduleManager from '../components/TeacherScheduleManager';
  */
 const TeacherRoutinePage = () => {
   return (
-    <div className="teacher-routine-management p-6">
+    <div className="teacher-routine-management mobile-stack-vertical" style={{ padding: '24px' }}>
       <TeacherScheduleManager />
     </div>
   );

@@ -168,11 +168,11 @@ const Programs = () => {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: '16px' }}>
-        <Col>
-          <Space align="center" size="middle">
+      <Row justify="space-between" align="middle" className="admin-page-header mobile-stack" style={{ marginBottom: '16px' }}>
+        <Col xs={24} lg={16}>
+          <Space align="center" size="middle" className="mobile-stack-vertical">
             <BookOutlined style={{ fontSize: '32px', color: '#52c41a' }} />
-            <div>
+            <div className="mobile-center">
               <Title level={2} style={{ margin: 0 }}>
                 Programs
               </Title>
@@ -182,16 +182,18 @@ const Programs = () => {
             </div>
           </Space>
         </Col>
-        <Col>
-          <Button 
-            type="primary" 
-            size="large"
-            icon={<PlusOutlined />}
-            onClick={handleAddNew}
-            style={{ borderRadius: '6px' }}
-          >
-            Add New Program
-          </Button>
+        <Col xs={24} lg={8}>
+          <div className="admin-actions" style={{ textAlign: 'right' }}>
+            <Button 
+              type="primary" 
+              size="large"
+              icon={<PlusOutlined />}
+              onClick={handleAddNew}
+              style={{ borderRadius: '6px' }}
+            >
+              Add New Program
+            </Button>
+          </div>
         </Col>
       </Row>
 

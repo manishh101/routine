@@ -18,7 +18,8 @@ import {
   PlusOutlined, 
   DeleteOutlined,
   WarningOutlined,
-  CalendarOutlined
+  CalendarOutlined,
+  ClearOutlined
 } from '@ant-design/icons';
 import AssignClassModal from './AssignClassModal';
 import ExcelActions from './ExcelActions';
@@ -153,9 +154,16 @@ const RoutineGrid = ({
   const [showUndoButton, setShowUndoButton] = useState(false);
 
   // Use App.useApp for proper context support in modals
-  const { modal } = App.useApp();
-
+  const { modal, message: contextMessage } = App.useApp();
   
+  // Safe message function that uses context message if available, falling back to regular message
+  const safeMessage = {
+    success: (...args) => (contextMessage || message).success(...args),
+    error: (...args) => (contextMessage || message).error(...args),
+    warning: (...args) => (contextMessage || message).warning(...args),
+    info: (...args) => (contextMessage || message).info(...args),
+  };
+
   const queryClient = useQueryClient();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
@@ -369,6 +377,49 @@ const RoutineGrid = ({
     return classData?.spanId != null;
   };
 
+  // Clear entire routine mutation
+  const clearEntireRoutineMutation = useMutation({
+    mutationFn: () => routinesAPI.clearEntireRoutine(programCode, semester, section),
+    onSuccess: async (result) => {
+      // Show success message with stats
+      const deletedCount = result?.data?.deletedCount || 0;
+      
+      safeMessage.success({
+        content: (
+          <span>
+            ✅ Entire routine cleared successfully. {deletedCount} class{deletedCount === 1 ? '' : 'es'} removed.
+          </span>
+        ),
+        duration: 5
+      });
+      
+      // Use enhanced cache management for teacher schedule synchronization
+      await handleRoutineChangeCache(queryClient, result);
+      
+      // Invalidate routine queries
+      queryClient.invalidateQueries(['routine', programCode, semester, section]);
+      
+      // Invalidate teacher schedules if any were affected
+      if (result?.data?.affectedTeachers?.length > 0) {
+        queryClient.invalidateQueries(['teacherSchedules']);
+      }
+    },
+    onError: (error) => {
+      console.error('Clear entire routine error:', error);
+      safeMessage.error({
+        content: (
+          <div>
+            <div>❌ Failed to clear the entire routine</div>
+            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+              {error.response?.data?.message || error.message || 'Unknown error occurred'}
+            </div>
+          </div>
+        ),
+        duration: 5
+      });
+    },
+  });
+
   // Clear class mutation
   const clearClassMutation = useMutation({
     mutationFn: ({ dayIndex, slotIndex }) => 
@@ -382,7 +433,7 @@ const RoutineGrid = ({
       setShowUndoButton(true);
       setTimeout(() => setShowUndoButton(false), 10000); // Hide after 10 seconds
       
-      message.success({
+      safeMessage.success({
         content: (
           <span>
             ✅ Class cleared successfully from {dayNames[dayIndex]}, {timeSlot?.label || `Slot ${slotIndex}`}
@@ -403,7 +454,7 @@ const RoutineGrid = ({
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       
       console.error('Clear class error:', error);
-      message.error({
+      safeMessage.error({
         content: (
           <div>
             <div>❌ Failed to clear class from {dayNames[dayIndex]}, {timeSlot?.label || `Slot ${slotIndex}`}</div>
@@ -427,7 +478,7 @@ const RoutineGrid = ({
       setShowUndoButton(true);
       setTimeout(() => setShowUndoButton(false), 10000); // Hide after 10 seconds
       
-      message.success({
+      safeMessage.success({
         content: (
           <span>
             ✅ Multi-period class cleared successfully! ({deletedCount} periods removed)
@@ -444,7 +495,7 @@ const RoutineGrid = ({
     },
     onError: (error, spanId) => {
       console.error('Clear span group error:', error);
-      message.error({
+      safeMessage.error({
         content: (
           <div>
             <div>❌ Failed to clear multi-period class</div>
@@ -458,12 +509,20 @@ const RoutineGrid = ({
     }
   });
 
+
+
+
+
+
+
+
+
   const handleSlotClick = (dayIndex, slotIndex) => {
     if (!isEditable || demoMode) return;
     
     const timeSlot = timeSlots.find(ts => ts._id === slotIndex);
     if (timeSlot?.isBreak) {
-      message.info('Cannot assign classes during break time');
+      safeMessage.info('Cannot assign classes during break time');
       return;
     }
 
@@ -473,13 +532,80 @@ const RoutineGrid = ({
     setAssignModalVisible(true);
   };
 
+  // Function to handle clearing the entire weekly routine
+  const handleClearEntireRoutine = () => {
+    modal.confirm({
+      title: (
+        <Space>
+          <DeleteOutlined style={{ color: '#ff4d4f', fontSize: '18px' }} />
+          <span style={{ fontWeight: 'bold' }}>Clear Entire Weekly Routine</span>
+        </Space>
+      ),
+      content: (
+        <div style={{ padding: '20px 0' }}>
+          <Alert 
+            message={`Do you want to delete the entire weekly routine for ${programCode} Semester ${semester} Section ${section}?`}
+            description="This action will permanently delete ALL classes from the entire weekly schedule. This cannot be undone."
+            type="error"
+            showIcon
+            style={{ marginBottom: '16px' }}
+          />
+          
+          <div style={{ fontSize: '14px', marginTop: '16px' }}>
+            <p><strong>This will delete:</strong></p>
+            <ul style={{ paddingLeft: '20px' }}>
+              <li>All subjects scheduled across all days</li>
+              <li>All assigned teachers and rooms</li>
+              <li>All multi-period classes</li>
+              <li>All special arrangements</li>
+            </ul>
+            <p style={{ marginTop: '16px' }}>After deletion, you will need to rebuild the routine from scratch or import from Excel.</p>
+          </div>
+        </div>
+      ),
+      okText: 'Yes, Clear Entire Routine',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      width: 550,
+      onOk: () => {
+        clearEntireRoutineMutation.mutate();
+      }
+    });
+  };
+
   const handleClearClass = (dayIndex, slotIndex) => {
     const classData = routineGridData[dayIndex]?.[slotIndex];
     const timeSlot = timeSlots.find(ts => ts._id === slotIndex);
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     
     if (!classData) {
-      message.warning('No class found to clear at this time slot');
+      // If no class is found, ask if user wants to clear the entire routine instead
+      modal.confirm({
+        title: (
+          <Space>
+            <DeleteOutlined style={{ color: '#ff4d4f' }} />
+            <span>No Class Found - Clear Entire Routine?</span>
+          </Space>
+        ),
+        content: (
+          <div style={{ padding: '16px 0' }}>
+            <Alert 
+              message="Do you want to delete the entire weekly routine for this semester?"
+              description="This action will permanently delete ALL classes from the entire weekly schedule."
+              type="warning"
+              showIcon
+              style={{ marginBottom: '16px' }}
+            />
+          </div>
+        ),
+        okText: 'Yes, Clear Entire Routine',
+        okType: 'danger',
+        cancelText: 'Cancel',
+        width: 500,
+        onOk: () => {
+          handleClearEntireRoutine();
+        }
+      });
       return;
     }
     
@@ -498,18 +624,18 @@ const RoutineGrid = ({
         content: (
           <div style={{ padding: '16px 0' }}>
             <div style={{ marginBottom: '12px', fontWeight: 'bold' }}>
-              📚 {classData.subjectName || classData.subjectCode}
+              {classData.subjectName || classData.subjectCode}
             </div>
             <div style={{ marginBottom: '8px' }}>
-              🗓️ {dayNames[dayIndex]}, {timeSlot?.label || `Slot ${slotIndex}`}
+              {dayNames[dayIndex]}, {timeSlot?.label || `Slot ${slotIndex}`}
             </div>
             <div style={{ marginBottom: '8px' }}>
-              👨‍🏫 {Array.isArray(classData.teacherNames) 
+              {Array.isArray(classData.teacherNames) 
                 ? classData.teacherNames.join(', ') 
                 : classData.teacherNames || 'No teacher assigned'}
             </div>
             <div style={{ marginBottom: '12px' }}>
-              🏫 {classData.roomName || 'No room assigned'}
+              {classData.roomName || 'No room assigned'}
             </div>
             <Alert 
               message={`This will clear all ${spanGroupSlots.length} periods of this multi-period class.`}
@@ -548,18 +674,18 @@ const RoutineGrid = ({
         content: (
           <div style={{ padding: '16px 0' }}>
             <div style={{ marginBottom: '12px', fontWeight: 'bold' }}>
-              📚 {classData.subjectName || classData.subjectCode}
+              {classData.subjectName || classData.subjectCode}
             </div>
             <div style={{ marginBottom: '8px' }}>
-              🗓️ {dayNames[dayIndex]}, {timeSlot?.label || `Slot ${slotIndex}`}
+              {dayNames[dayIndex]}, {timeSlot?.label || `Slot ${slotIndex}`}
             </div>
             <div style={{ marginBottom: '8px' }}>
-              👨‍🏫 {Array.isArray(classData.teacherNames) 
+              {Array.isArray(classData.teacherNames) 
                 ? classData.teacherNames.join(', ') 
                 : classData.teacherNames || 'No teacher assigned'}
             </div>
             <div style={{ marginBottom: '12px' }}>
-              🏫 {classData.roomName || 'No room assigned'}
+              {classData.roomName || 'No room assigned'}
             </div>
             <Alert 
               message="This will remove the class from this time slot."
@@ -591,7 +717,7 @@ const RoutineGrid = ({
   // Undo last delete operation
   const handleUndoDelete = async () => {
     if (!lastDeletedClass) {
-      message.warning('No recent deletion to undo');
+      safeMessage.warning('No recent deletion to undo');
       return;
     }
 
@@ -600,7 +726,7 @@ const RoutineGrid = ({
       
       if (type === 'span') {
         // Restore span group - this would require a more complex implementation
-        message.info('Undo for multi-period classes is not yet supported. Please recreate the class manually.');
+        safeMessage.info('Undo for multi-period classes is not yet supported. Please recreate the class manually.');
       } else {
         // Restore single class
         await routinesAPI.assignClass(programCode, semester, section, {
@@ -613,7 +739,7 @@ const RoutineGrid = ({
           notes: classData.notes || ''
         });
         
-        message.success('Class restored successfully!');
+        safeMessage.success('Class restored successfully!');
         queryClient.invalidateQueries(['routine', programCode, semester, section]);
       }
       
@@ -666,7 +792,7 @@ const RoutineGrid = ({
           )}
           {teacherViewMode && classData.timeSlot_display && (
             <div style={{ fontSize: '10px', color: '#666', fontWeight: 'normal' }}>
-              ⏰ {classData.timeSlot_display}
+               {classData.timeSlot_display}
             </div>
           )}
         </div>
@@ -677,22 +803,22 @@ const RoutineGrid = ({
         </div>
         {!teacherViewMode && (
           <div style={{ marginBottom: '2px', fontSize: '11px' }}>
-            👨‍🏫 {Array.isArray(classData.teacherShortNames) 
+             {Array.isArray(classData.teacherShortNames) 
               ? classData.teacherShortNames.join(', ')
               : classData.teacherShortNames || 'No Teacher'}
           </div>
         )}
         <div style={{ fontSize: '11px' }}>
-          🏫 {classData.roomName || 'No Room'}
+          {classData.roomName || 'No Room'}
         </div>
         {classData.notes && (
           <div style={{ marginTop: '4px', fontSize: '10px', color: '#666' }}>
-            📝 {classData.notes}
+            {classData.notes}
           </div>
         )}
         {isSpanned && isSpanMaster && classData.spanId && (
           <div style={{ marginTop: '4px', fontSize: '10px', color: '#1677ff' }}>
-            🔄 Multi-period class
+            Multi-period class
           </div>
         )}
       </div>
@@ -835,11 +961,26 @@ const RoutineGrid = ({
       `}</style>
       
       <Card 
+        className="routine-grid-container"
         title={demoMode ? 'BCT - Semester 1 - Section A (Demo)' : 
               teacherViewMode ? 'Weekly Schedule' : 
               `${programCode} - Semester ${semester} - Section ${section}`}
         extra={
-          <Space>
+          <Space className="routine-actions">
+            {!demoMode && !teacherViewMode && isEditable && (
+              <Tooltip title="Clear Entire Routine">
+                <Button 
+                  type="default"
+                  danger
+                  icon={<DeleteOutlined />}
+                  size="small"
+                  onClick={handleClearEntireRoutine}
+                  style={{ marginRight: '8px' }}
+                >
+                  Clear All
+                </Button>
+              </Tooltip>
+            )}
             {!demoMode && !teacherViewMode && showExcelActions && (
               <ExcelActions
                 programCode={programCode}
@@ -888,11 +1029,11 @@ const RoutineGrid = ({
           </Space>
         }
       >
-        <div style={{ overflowX: 'auto', marginTop: '7px' }}>
+        <div className="routine-grid" style={{ overflowX: 'auto', marginTop: '7px', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
             <thead>
               <tr>
-                <th style={{ 
+                <th className="time-slot" style={{ 
                   padding: '12px 8px', 
                   border: '1px solid #d9d9d9', 
                   backgroundColor: '#fafafa',
@@ -904,7 +1045,8 @@ const RoutineGrid = ({
                 </th>
                 {timeSlots.map((timeSlot) => (
                   <th 
-                    key={timeSlot._id} 
+                    key={timeSlot._id}
+                    className="time-slot" 
                     style={{ 
                       padding: '12px 8px', 
                       border: '1px solid #d9d9d9', 
@@ -943,7 +1085,7 @@ const RoutineGrid = ({
                     
                     if (timeSlot.isBreak) {
                       return (
-                        <td key={`${dayIndex}-${timeSlot._id}`} style={{
+                        <td key={`${dayIndex}-${timeSlot._id}`} className="class-cell" style={{
                           padding: '8px',
                           border: '1px solid #d9d9d9',
                           backgroundColor: '#f5f5f5',
@@ -995,65 +1137,7 @@ const RoutineGrid = ({
                             <div className="span-marker" title={`Multi-period class (spans ${rowSpan} periods)`}></div>
                           )}
                           {renderClassContent(classData)}
-                          {isEditable && !demoMode && !teacherViewMode && classData && (
-                            <div style={{ 
-                              position: 'absolute', 
-                              top: '4px', 
-                              right: '4px',
-                              zIndex: 10
-                            }}>
-                              <Button
-                                size="small"
-                                type="text"
-                                danger
-                                icon={<DeleteOutlined />}
-                                loading={clearClassMutation.isLoading || clearSpanGroupMutation.isLoading}
-                                style={{ 
-                                  fontSize: '12px', 
-                                  padding: '4px', 
-                                  height: '24px',
-                                  width: '24px',
-                                  borderRadius: '50%',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                                  border: '1px solid #ff4d4f',
-                                  boxShadow: '0 2px 8px rgba(255, 77, 79, 0.2)',
-                                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                  cursor: 'pointer'
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleClearClass(dayIndex, timeSlot._id);
-                                }}
-                                title={classData?.spanId ? 
-                                  "Clear all periods of this multi-period class" : 
-                                  "Clear this class"
-                                }
-                                aria-label={classData?.spanId ? 
-                                  "Delete multi-period class" : 
-                                  "Delete class"
-                                }
-                                onMouseEnter={(e) => {
-                                  if (!e.currentTarget.disabled) {
-                                    e.currentTarget.style.backgroundColor = '#ff4d4f';
-                                    e.currentTarget.style.color = '#fff';
-                                    e.currentTarget.style.transform = 'scale(1.1)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 77, 79, 0.4)';
-                                  }
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (!e.currentTarget.disabled) {
-                                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.95)';
-                                    e.currentTarget.style.color = '#ff4d4f';
-                                    e.currentTarget.style.transform = 'scale(1)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(255, 77, 79, 0.2)';
-                                  }
-                                }}
-                              />
-                            </div>
-                          )}
+                          {/* Delete icon removed */}
                           {/* Show program-semester-section in teacher view mode */}
                           {teacherViewMode && classData && classData.programSemesterSection && (
                             <div style={{ 
@@ -1063,7 +1147,7 @@ const RoutineGrid = ({
                               borderTop: '1px dashed #ddd',
                               paddingTop: '2px'
                             }}>
-                              📚 {classData.programSemesterSection}
+                              {classData.programSemesterSection}
                             </div>
                           )}
                           {isEditable && !demoMode && !teacherViewMode && !classData && (
@@ -1112,7 +1196,7 @@ const RoutineGrid = ({
             </div>
             <Space direction="vertical" size="small">
               <div style={{ fontSize: '12px', color: '#bfbfbf' }}>
-                💡 Tip: You can also import an existing routine using the import button above
+                 Tip: You can also import an existing routine using the import button above
               </div>
             </Space>
           </div>
