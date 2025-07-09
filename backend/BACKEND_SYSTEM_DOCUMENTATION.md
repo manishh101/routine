@@ -321,8 +321,11 @@ The **IOE Pulchowk Campus Routine Management System Backend** is a comprehensive
   "capacity": 30,
   "roomType": "LAB",
   "floor": 2,
-  "building": "Computer Block"
+  "building": "Computer Block",
+  "facilities": ["Projector", "Computers", "Air Conditioning"],
+  "notes": "This lab is equipped with modern computers and a projector."
 }
+
 ```
 
 #### `GET /rooms/:id`

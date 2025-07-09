@@ -1099,6 +1099,19 @@ const RoutineGrid = ({
 
   const handleSaveClass = async (classData) => {
     try {
+      // Check if this is an elective class that was already saved
+      if (classData.isElectiveClass && classData.crossSectionScheduled) {
+        console.log('🎯 Elective class already scheduled through elective API, skipping regular assignment');
+        safeMessage.success('Elective class scheduled successfully for both sections!');
+        
+        // Refresh data to show the new elective
+        await refetchRoutine();
+        queryClient.invalidateQueries(['routine', programCode, semester, section]);
+        
+        onModalClose();
+        return;
+      }
+      
       // Check if this is a multi-period class
       if (classData.isMultiPeriod && classData.slotIndexes && classData.slotIndexes.length > 1) {
         return await handleSaveSpannedClass(classData, classData.slotIndexes);

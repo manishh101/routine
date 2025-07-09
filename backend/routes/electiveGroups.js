@@ -46,6 +46,11 @@ router.post('/', [protect, authorize('admin'), ...validateElectiveGroup], electi
 // @access  Private
 router.get('/', protect, electiveGroupController.getElectiveGroups);
 
+// @route   GET /api/elective-groups/program/:programCode
+// @desc    Get elective groups by program code
+// @access  Private
+router.get('/program/:programCode', protect, electiveGroupController.getElectivesByProgram);
+
 // @route   GET /api/elective-groups/:id
 // @desc    Get elective group by ID
 // @access  Private

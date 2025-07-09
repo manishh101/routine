@@ -109,12 +109,12 @@ const Layout = () => {
       label: 'Teacher Schedule',
       title: collapsed ? 'Teacher Schedule' : undefined
     },
-    // { 
-    //   key: '/excel-demo', 
-    //   icon: <FileExcelOutlined />, 
-    //   label: 'Excel Demo',
-    //   title: collapsed ? 'Excel Demo' : undefined
-    // },
+    { 
+      key: '/room-routine', 
+      icon: <FileExcelOutlined />, 
+      label: 'Room Schedule',
+      title: collapsed ? 'Room Schedule' : undefined
+    },
     // { 
     //   key: '/teacher-excel-demo', 
     //   icon: <FileExcelOutlined />, 
@@ -176,12 +176,12 @@ const Layout = () => {
       label: 'Time Slots',
       title: collapsed ? 'Time Slots' : undefined
     },
-    { 
-      key: '/departments-manager', 
-      icon: <BankOutlined />, 
-      label: 'Departments',
-      title: collapsed ? 'Departments' : undefined
-    },
+    // { 
+    //   key: '/departments-manager', 
+    //   icon: <BankOutlined />, 
+    //   label: 'Departments',
+    //   title: collapsed ? 'Departments' : undefined
+    // },
     { type: 'divider' },
     { 
       key: 'system-section', 
@@ -203,12 +203,12 @@ const Layout = () => {
       label: 'Academic Calendar',
       title: collapsed ? 'Academic Calendar' : undefined
     },
-    { 
-      key: '/session-manager', 
-      icon: <SettingOutlined />, 
-      label: 'Session Management',
-      title: collapsed ? 'Session Management' : undefined
-    },
+    // { 
+    //   key: '/session-manager', 
+    //   icon: <SettingOutlined />, 
+    //   label: 'Session Management',
+    //   title: collapsed ? 'Session Management' : undefined
+    // },
     { 
       key: '/elective-manager', 
       icon: <BranchesOutlined />, 
@@ -236,36 +236,36 @@ const Layout = () => {
         display: collapsed ? 'none' : 'block'
       }
     },
-    { 
-      key: '/analytics-dashboard', 
-      icon: <BarChartOutlined />, 
-      label: 'Analytics Dashboard',
-      title: collapsed ? 'Analytics Dashboard' : undefined
-    },
+    // { 
+    //   key: '/analytics-dashboard', 
+    //   icon: <BarChartOutlined />, 
+    //   label: 'Analytics Dashboard',
+    //   title: collapsed ? 'Analytics Dashboard' : undefined
+    // },
     { 
       key: '/lab-group-manager', 
       icon: <ExperimentOutlined />, 
       label: 'Lab Groups',
       title: collapsed ? 'Lab Groups' : undefined
     },
-    { 
-      key: '/user-manager', 
-      icon: <TeamOutlined />, 
-      label: 'User Management',
-      title: collapsed ? 'User Management' : undefined
-    },
-    { 
-      key: '/template-manager', 
-      icon: <FileTextOutlined />, 
-      label: 'Templates',
-      title: collapsed ? 'Templates' : undefined
-    },
-    { 
-      key: '/room-vacancy-analysis', 
-      icon: <EnvironmentOutlined />, 
-      label: 'Room Vacancy',
-      title: collapsed ? 'Room Vacancy' : undefined
-    },
+    // { 
+    //   key: '/user-manager', 
+    //   icon: <TeamOutlined />, 
+    //   label: 'User Management',
+    //   title: collapsed ? 'User Management' : undefined
+    // },
+    // { 
+    //   key: '/template-manager', 
+    //   icon: <FileTextOutlined />, 
+    //   label: 'Templates',
+    //   title: collapsed ? 'Templates' : undefined
+    // },
+    // { 
+    //   key: '/room-vacancy-analysis', 
+    //   icon: <EnvironmentOutlined />, 
+    //   label: 'Room Vacancy',
+    //   title: collapsed ? 'Room Vacancy' : undefined
+    // },
     // { 
     //   key: '/excel-demo-admin', 
     //   icon: <FileExcelOutlined />, 

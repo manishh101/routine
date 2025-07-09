@@ -1,6 +1,7 @@
 const ElectiveGroup = require('../models/ElectiveGroup');
 const SectionElectiveChoice = require('../models/SectionElectiveChoice');
 const Subject = require('../models/Subject');
+const Program = require('../models/Program');
 const { validationResult } = require('express-validator');
 
 // @desc    Create a new elective group
@@ -286,11 +287,6 @@ exports.removeSubjectFromElectiveGroup = async (req, res) => {
       });
     }
 
-    // Remove subject from group
-    electiveGroup.subjects = electiveGroup.subjects.filter(s => 
-      s.subjectId.toString() !== req.params.subjectId
-    );
-
     await electiveGroup.save();
     await electiveGroup.populate('subjects.subjectId', 'code name credits');
 
@@ -300,6 +296,39 @@ exports.removeSubjectFromElectiveGroup = async (req, res) => {
     if (err.kind === 'ObjectId') {
       return res.status(404).json({ msg: 'Invalid ID format' });
     }
+    res.status(500).json({ msg: 'Server error', error: err.message });
+  }
+};
+
+// @desc    Get elective groups by program code
+// @route   GET /api/elective-groups/program/:programCode
+// @access  Private
+exports.getElectivesByProgram = async (req, res) => {
+  try {
+    const { programCode } = req.params;
+    const { semester, academicYearId, isActive } = req.query;
+    
+    // Find program by code
+    const program = await Program.findOne({ code: programCode });
+    if (!program) {
+      return res.status(404).json({ msg: 'Program not found' });
+    }
+    
+    const filter = { programId: program._id };
+    
+    if (semester) filter.semester = parseInt(semester);
+    if (academicYearId) filter.academicYearId = academicYearId;
+    if (isActive !== undefined) filter.isActive = isActive === 'true';
+
+    const electiveGroups = await ElectiveGroup.find(filter)
+      .populate('programId', 'code name')
+      .populate('academicYearId', 'title nepaliYear')
+      .populate('subjects.subjectId', 'code name credits weeklyHours')
+      .sort({ semester: 1, name: 1 });
+      
+    res.json(electiveGroups);
+  } catch (err) {
+    console.error(err.message);
     res.status(500).json({ msg: 'Server error', error: err.message });
   }
 };

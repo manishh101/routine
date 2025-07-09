@@ -19,6 +19,7 @@ import TimeSlotManagement from './pages/admin/TimeSlotManagement';
 import ExcelDemo from './pages/ExcelDemo';
 import TeacherExcelDemo from './pages/TeacherExcelDemo';
 import TeacherAPITest from './pages/TeacherAPITest';
+import RoomRoutinePage from './pages/RoomRoutinePage';
 
 // New Admin Pages - Phase 1
 import DepartmentManagement from './pages/admin/DepartmentManagement';
@@ -167,6 +168,7 @@ function App() {
               <Route path="excel-demo" element={<ExcelDemo />} />
               <Route path="teacher-excel-demo" element={<TeacherExcelDemo />} />
               <Route path="api-test" element={<TeacherAPITest />} />
+              <Route path="room-routine" element={<RoomRoutinePage />} />
               
               {/* Admin Routes - Protected */}
               <Route 

@@ -373,7 +373,17 @@ export const routinesAPI = {
   checkRoomAvailability: (roomId, dayIndex, slotIndex) => 
     api.get(`/routines/rooms/${roomId}/availability?dayIndex=${dayIndex}&slotIndex=${slotIndex}`),
   getVacantRooms: (dayIndex, slotIndex) => 
-    api.get(`/routines/rooms/vacant?dayIndex=${dayIndex}&slotIndex=${slotIndex}`)
+    api.get(`/routines/rooms/vacant?dayIndex=${dayIndex}&slotIndex=${slotIndex}`),
+  
+  // Elective management endpoints for 7th and 8th semester
+  scheduleElectiveClass: (data) => 
+    api.post('/routines/electives/schedule', data),
+  getUnifiedSectionRoutine: (programCode, semester, section) => 
+    api.get(`/routines/section/${programCode}/${semester}/${section}`),
+  checkElectiveConflicts: (data) => 
+    api.post('/routines/electives/conflicts', data),
+  analyzeScheduleConflicts: (data) => 
+    api.post('/routines/enhanced/conflicts/analyze', data)
 };
 
 // Subjects API
@@ -510,7 +520,17 @@ export const electiveGroupsAPI = {
   updateElectiveGroup: (id, data) => api.put(`/elective-groups/${id}`, data),
   deleteElectiveGroup: (id) => api.delete(`/elective-groups/${id}`),
   assignElectiveToSection: (data) => api.post('/elective-groups/assign', data),
-  getElectivesByProgram: (programId, semester) => api.get(`/elective-groups/program/${programId}/semester/${semester}`),
+  getElectivesByProgram: (programCode, semester) => {
+    // First get programs to find the programId, then get elective groups
+    return api.get('/programs').then(response => {
+      const programs = response.data;
+      const program = programs.find(p => p.code === programCode);
+      if (!program) {
+        throw new Error(`Program with code ${programCode} not found`);
+      }
+      return api.get(`/elective-groups?programId=${program._id}&semester=${semester}`);
+    });
+  },
   getElectiveAnalytics: (id) => api.get(`/elective-groups/${id}/analytics`)
 };
 

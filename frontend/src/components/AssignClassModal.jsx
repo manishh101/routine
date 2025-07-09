@@ -28,7 +28,8 @@ import {
   TeamOutlined,
   GroupOutlined,
   SwapOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  BranchesOutlined
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -37,7 +38,8 @@ import {
   roomsAPI,
   routinesAPI,
   subjectsAPI,
-  timeSlotsAPI
+  timeSlotsAPI,
+  programsAPI
 } from '../services/api';
 import { 
   normalizeTimeSlotId, 
@@ -78,6 +80,15 @@ const AssignClassModal = ({
   const [groupBRoom, setGroupBRoom] = useState(null);
   const [isMultiPeriod, setIsMultiPeriod] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState([]);
+  
+  // Elective management states for 7th and 8th semester
+  const [isElectiveClass, setIsElectiveClass] = useState(false);
+  const [electiveNumber, setElectiveNumber] = useState(1);
+  const [electiveType, setElectiveType] = useState('TECHNICAL');
+  const [targetSections, setTargetSections] = useState(['AB', 'CD']);
+
+  // Check if current semester is eligible for electives (7th or 8th)
+  const isElectiveSemester = semester === 7 || semester === 8;
 
   // Use App.useApp for proper context support in modals
   const { modal } = App.useApp();
@@ -215,6 +226,33 @@ const AssignClassModal = ({
     setChecking(false);
   }, [teachers, dayIndex, slotIndex]);
 
+  // Handle elective class toggle
+  const handleElectiveToggle = (checked) => {
+    setIsElectiveClass(checked);
+    
+    if (checked) {
+      // Reset to elective-specific defaults
+      const defaultElectiveNumber = semester === 7 ? 1 : 1; // Default to first elective
+      setElectiveNumber(defaultElectiveNumber);
+      setElectiveType('TECHNICAL');
+      
+      form.setFieldsValue({
+        subjectId: undefined,
+        electiveNumber: defaultElectiveNumber,
+        electiveType: 'TECHNICAL',
+        targetSections: ['AB', 'CD']
+      });
+      setTargetSections(['AB', 'CD']);
+    } else {
+      // Reset elective-specific fields
+      form.setFieldsValue({
+        electiveNumber: undefined,
+        electiveType: undefined,
+        targetSections: undefined
+      });
+    }
+  };
+
   // Update filtered teachers when teachers data changes or modal opens
   useEffect(() => {
     if (visible && teachers.length > 0) {
@@ -255,6 +293,20 @@ const AssignClassModal = ({
       });
       setCurrentClassType(existingClass.classType);
 
+      // Handle elective class editing
+      if (existingClass.isElectiveClass && isElectiveSemester) {
+        setIsElectiveClass(true);
+        setElectiveNumber(existingClass.electiveNumber || existingClass.electiveInfo?.electiveNumber || 1);
+        setElectiveType(existingClass.electiveType || existingClass.electiveInfo?.electiveType || 'TECHNICAL');
+        setTargetSections(existingClass.targetSections || existingClass.displayInSections || ['AB', 'CD']);
+        
+        form.setFieldsValue({
+          electiveNumber: existingClass.electiveNumber || existingClass.electiveInfo?.electiveNumber || 1,
+          electiveType: existingClass.electiveType || existingClass.electiveInfo?.electiveType || 'TECHNICAL',
+          targetSections: existingClass.targetSections || existingClass.displayInSections || ['AB', 'CD']
+        });
+      }
+
       if (existingClass.classType === 'P' && existingClass.labGroupType) {
         setLabGroupType(existingClass.labGroupType);
 
@@ -290,6 +342,13 @@ const AssignClassModal = ({
       setGroupBRoom(null);
       setIsMultiPeriod(false);
       setSelectedSlots([slotIndex]);
+      
+      // Reset elective fields
+      setIsElectiveClass(false);
+      setElectiveNumber(1);
+      setElectiveType('TECHNICAL');
+      setTargetSections(['AB', 'CD']);
+      
       setFilteredTeachers(teachers.map(teacher => ({
         ...teacher,
         isAvailable: true,
@@ -384,6 +443,22 @@ const AssignClassModal = ({
     
     // Skip most validation for BREAK class types
     if (values.classType === 'BREAK') return errors;
+
+    // Elective class validation for 7th and 8th semester
+    if (isElectiveClass && isElectiveSemester) {
+      if (!values.electiveNumber) errors.push('Elective number is required');
+      if (!values.electiveType) errors.push('Elective type is required');
+      if (!values.targetSections || values.targetSections.length === 0) {
+        errors.push('Target sections are required for elective classes');
+      }
+      // Validate elective number based on semester
+      if (semester === 7 && values.electiveNumber !== 1) {
+        errors.push('7th semester only has one elective');
+      }
+      if (semester === 8 && ![1, 2].includes(values.electiveNumber)) {
+        errors.push('8th semester has Elective I and Elective II only');
+      }
+    }
 
     if (values.classType === 'P' && !values.labGroupType) errors.push('Lab group type is required for practical classes');
 
@@ -491,6 +566,101 @@ const AssignClassModal = ({
         isMultiPeriod,
         slotIndexes: isMultiPeriod ? selectedSlots : [slotIndex]
       };
+
+      // Handle elective classes for 7th and 8th semester
+      if (isElectiveClass && isElectiveSemester) {
+        const electiveLabel = semester === 7 ? 'Elective' : 
+                             values.electiveNumber === 1 ? 'Elective I' : 'Elective II';
+        
+        try {
+          // First, get the program ID from program code
+          const programsResponse = await programsAPI.getPrograms();
+          const program = programsResponse.data?.find(p => p.code === programCode);
+          
+          if (!program) {
+            message.error(`Program with code ${programCode} not found`);
+            return;
+          }
+
+          // Prepare elective class data with proper backend format
+          const electiveClassData = {
+            // Required backend fields
+            programId: program._id,
+            semester: semester,
+            subjectId: values.subjectId,
+            dayIndex: dayIndex,
+            slotIndex: isMultiPeriod && selectedSlots.length > 0 ? 
+                      normalizeTimeSlotId(selectedSlots[0]) : 
+                      normalizeTimeSlotId(slotIndex),
+            teacherIds: values.teacherIds || [],
+            roomId: values.roomId,
+            classType: values.classType,
+            
+            // Multi-period support for electives
+            isMultiPeriod: isMultiPeriod,
+            slotIndexes: isMultiPeriod ? selectedSlots.map(s => normalizeTimeSlotId(s)) : [normalizeTimeSlotId(slotIndex)],
+            
+            // Elective-specific fields
+            electiveNumber: values.electiveNumber,
+            electiveType: values.electiveType || 'TECHNICAL', // Use form value or default
+            
+            // Student enrollment (required by backend)
+            studentEnrollment: {
+              total: 60, // Default combined enrollment
+              fromAB: 30,
+              fromCD: 30
+            },
+            
+            // Additional fields for frontend compatibility
+            programCode: programCode,
+            targetSections: values.targetSections || ['AB', 'CD'],
+            displayInSections: values.targetSections || ['AB', 'CD'],
+            crossSectionScheduling: true,
+            electiveLabel: electiveLabel,
+            displayName: `${electiveLabel} - ${subjects.find(s => s.subjectId === values.subjectId)?.subjectName_display || 'Unknown Subject'}`,
+            specialMarker: 'ELECTIVE_CROSS_SECTION',
+            notes: values.notes || ''
+          };
+          
+          console.log('Scheduling elective class with data:', electiveClassData);
+          
+          // Use the elective scheduling endpoint
+          const response = await routinesAPI.scheduleElectiveClass(electiveClassData);
+          
+          if (response.data?.success) {
+            message.success(`${electiveLabel} class scheduled successfully for both sections!`);
+            
+            // Handle the new response structure with electiveSlots array
+            const responseData = response.data.data;
+            const electiveSlots = responseData.electiveSlots || [];
+            const electiveInfo = responseData.electiveInfo || {};
+            
+            // Pass the response data to parent component  
+            onSave({
+              ...electiveClassData,
+              electiveSlots: electiveSlots,
+              electiveInfo: electiveInfo,
+              _id: electiveSlots[0]?._id, // Use first slot's ID for compatibility
+              isElectiveClass: true,
+              classCategory: 'ELECTIVE',
+              crossSectionScheduled: true,
+              sectionsScheduled: ['AB', 'CD']
+            });
+          } else {
+            throw new Error(response.data?.message || 'Failed to schedule elective class');
+          }
+          return;
+          
+        } catch (error) {
+          console.error('Error scheduling elective class:', error);
+          const errorMessage = error.response?.data?.message || 
+                              error.response?.data?.errors?.[0]?.msg ||
+                              error.message ||
+                              'Failed to schedule elective class';
+          message.error(`Failed to schedule ${electiveLabel} class: ${errorMessage}`);
+          return;
+        }
+      }
 
       if (currentClassType === 'P') {
         // Map frontend labGroupType to backend labGroup format
@@ -627,6 +797,126 @@ const AssignClassModal = ({
                 </Select>
               </Form.Item>
               
+              {/* Elective Class Toggle for 7th and 8th Semester */}
+              {isElectiveSemester && currentClassType && currentClassType !== 'BREAK' && (
+                <Form.Item style={{ marginBottom: '12px' }}>
+                  <Checkbox 
+                    checked={isElectiveClass} 
+                    onChange={(e) => handleElectiveToggle(e.target.checked)}
+                  >
+                    <Text strong style={{ color: '#722ed1' }}>
+                      {semester === 7 ? 'Elective Class' : 'Elective I/II Class'} (Cross-Section)
+                    </Text>
+                    <Text type="secondary" style={{ marginLeft: 8 }}>
+                      {semester === 7 
+                        ? 'Schedule elective for both AB and CD sections'
+                        : 'Schedule Elective I or II for both AB and CD sections'
+                      }
+                    </Text>
+                  </Checkbox>
+                </Form.Item>
+              )}
+
+              {/* Elective-specific fields */}
+              {isElectiveClass && isElectiveSemester && (
+                <Card 
+                  title={
+                    <Space>
+                      <BranchesOutlined style={{ color: '#722ed1' }} />
+                      <Text strong style={{ color: '#722ed1' }}>
+                        Elective Configuration - Semester {semester}
+                      </Text>
+                      <Tag color="purple">Cross-Section</Tag>
+                    </Space>
+                  } 
+                  size="small" 
+                  style={{ marginBottom: '16px', borderColor: '#722ed1' }}
+                >
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Form.Item 
+                        name="electiveNumber" 
+                        label="Elective Number"
+                        rules={[{ required: true, message: 'Please select elective number' }]}
+                      >
+                        <Select 
+                          placeholder="Select elective"
+                          value={electiveNumber}
+                          onChange={setElectiveNumber}
+                        >
+                          {semester === 7 ? (
+                            <Option value={1}>
+                              <Tag color="blue">Elective</Tag>
+                            </Option>
+                          ) : (
+                            <>
+                              <Option value={1}>
+                                <Tag color="blue">Elective I</Tag>
+                              </Option>
+                              <Option value={2}>
+                                <Tag color="green">Elective II</Tag>
+                              </Option>
+                            </>
+                          )}
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item 
+                        name="electiveType" 
+                        label="Elective Type"
+                        rules={[{ required: true, message: 'Please select elective type' }]}
+                      >
+                        <Select 
+                          placeholder="Select type"
+                          value={electiveType}
+                          onChange={setElectiveType}
+                        >
+                          <Option value="TECHNICAL">
+                            <Tag color="blue">Technical</Tag>
+                          </Option>
+                          <Option value="MANAGEMENT">
+                            <Tag color="green">Management</Tag>
+                          </Option>
+                          <Option value="OPEN">
+                            <Tag color="orange">Open</Tag>
+                          </Option>
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item 
+                        name="targetSections" 
+                        label="Target Sections"
+                        rules={[{ required: true, message: 'Please select target sections' }]}
+                      >
+                        <Select 
+                          mode="multiple"
+                          placeholder="Select sections"
+                          value={targetSections}
+                          onChange={setTargetSections}
+                        >
+                          <Option value="AB">
+                            <Tag color="cyan">Section AB</Tag>
+                          </Option>
+                          <Option value="CD">
+                            <Tag color="purple">Section CD</Tag>
+                          </Option>
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  
+                  <Alert 
+                    message="Cross-Section Elective" 
+                    description={`This ${semester === 7 ? 'elective' : `elective ${electiveNumber === 1 ? 'I' : 'II'}`} (${electiveType}) class will appear in both selected sections' routines at the same time slot.`}
+                    type="info" 
+                    showIcon 
+                    style={{ marginTop: '12px' }}
+                  />
+                </Card>
+              )}
+              
               {currentClassType === 'P' && (
                 <Form.Item name="labGroupType" label="Lab Group Type" rules={[{ required: true, message: 'Please select lab group type' }]}>
                   <Select placeholder="Select lab group type">
@@ -696,7 +986,35 @@ const AssignClassModal = ({
 
           {currentClassType && currentClassType !== 'BREAK' && !(currentClassType === 'P' && labGroupType === 'bothGroups') && (
             <Row gutter={16}>
-              <Col span={24}><Form.Item name="subjectId" label="Subject" rules={[{ required: true }]}><Select placeholder="Select subject" loading={subjectsLoading} showSearch>{subjects.map(s => <Option key={s.subjectId} value={s.subjectId}>{s.subjectName_display}</Option>)}</Select></Form.Item></Col>
+              <Col span={24}>
+                <Form.Item name="subjectId" label="Subject" rules={[{ required: true }]}>
+                  <Select 
+                    placeholder={isElectiveClass ? "Select elective subject" : "Select subject"} 
+                    loading={subjectsLoading} 
+                    showSearch
+                  >
+                    {subjects.map(s => (
+                      <Option 
+                        key={s.subjectId} 
+                        value={s.subjectId}
+                      >
+                        <Space>
+                          {isElectiveClass && (
+                            <Tag color="purple">
+                              {semester === 7 ? `Elective (${electiveType})` : 
+                               `Elective ${electiveNumber === 1 ? 'I' : 'II'} (${electiveType})`}
+                            </Tag>
+                          )}
+                          {s.subjectName_display}
+                          {isElectiveClass && (
+                            <Tag color="gold" size="small">Cross-Section</Tag>
+                          )}
+                        </Space>
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
               <Col span={12}>
                 <Form.Item name="teacherIds" label="Teacher(s)" rules={[{ required: true }]}>
                   <Select mode="multiple" placeholder="Select teacher(s)" loading={teachersLoading || checking} showSearch maxTagCount="responsive">

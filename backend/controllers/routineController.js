@@ -2632,86 +2632,109 @@ exports.scheduleElectiveClass = async (req, res) => {
       });
     }
 
-    // Create the elective routine slot
-    const electiveSlot = new RoutineSlot({
-      programId,
-      subjectId,
-      academicYearId: currentAcademicYear._id,
-      semester: parseInt(semester),
-      
-      // Core positioning
-      dayIndex,
-      slotIndex,
-      
-      // Elective targeting - appears in both section routines
-      targetSections: ['AB', 'CD'],
-      displayInSections: ['AB', 'CD'],
-      
-      // Assignment
-      teacherIds,
-      roomId,
-      classType,
-      
-      // Classification
-      classCategory: 'ELECTIVE',
-      isElectiveClass: true,
-      electiveGroupId,
-      
-      // Elective-specific information
-      electiveInfo: {
-        electiveNumber: electiveNumber || 1,
-        electiveType: electiveType || 'TECHNICAL',
-        groupName: `${semester === 7 ? '7th' : '8th'} Sem ${electiveType} Elective`,
-        electiveCode: `ELEC-${electiveType.substring(0,4).toUpperCase()}-${electiveNumber || 1}`,
-        studentComposition: {
-          total: studentEnrollment.total,
-          fromAB: studentEnrollment.fromAB,
-          fromCD: studentEnrollment.fromCD,
-          distributionNote: `${studentEnrollment.total} students (${studentEnrollment.fromAB} from AB, ${studentEnrollment.fromCD} from CD)`
-        },
-        displayOptions: {
-          showInBothSections: true,
-          highlightAsElective: true,
-          customDisplayText: `${subject.name} (Mixed sections)`
-        }
-      },
-      
-      // Recurrence
-      recurrence: {
-        type: 'weekly',
-        description: 'Weekly elective class'
-      },
-      
-      // Display data
-      display: {
-        programCode: req.body.programCode || 'BCT',
+    // Create elective routine slots for both sections (AB and CD)
+    const electiveSlots = [];
+    
+    for (const section of ['AB', 'CD']) {
+      const electiveSlot = new RoutineSlot({
+        programId,
+        subjectId,
+        academicYearId: currentAcademicYear._id,
         semester: parseInt(semester),
-        section: 'MIXED',
-        subjectCode: subject.code,
-        subjectName: subject.name,
-        teacherNames: teachers.map(t => t.shortName).join(', '),
-        roomName: room.name,
-        classType
-      },
-      
-      isActive: true
-    });
+        section, // Required field - set to either 'AB' or 'CD'
+        
+        // Core positioning
+        dayIndex,
+        slotIndex,
+        
+        // Assignment
+        teacherIds,
+        roomId,
+        classType,
+        
+        // Classification
+        classCategory: 'ELECTIVE',
+        isElectiveClass: true,
+        electiveGroupId,
+        
+        // Elective-specific information
+        electiveInfo: {
+          electiveNumber: electiveNumber || 1,
+          electiveType: electiveType || 'TECHNICAL',
+          groupName: `${semester === 7 ? '7th' : '8th'} Sem ${electiveType} Elective`,
+          electiveCode: `ELEC-${electiveType.substring(0,4).toUpperCase()}-${electiveNumber || 1}`,
+          studentComposition: {
+            total: studentEnrollment.total,
+            fromAB: studentEnrollment.fromAB,
+            fromCD: studentEnrollment.fromCD,
+            distributionNote: `${studentEnrollment.total} students (${studentEnrollment.fromAB} from AB, ${studentEnrollment.fromCD} from CD)`
+          },
+          displayOptions: {
+            showInBothSections: true,
+            highlightAsElective: true,
+            customDisplayText: `${subject.name} (Cross-section elective)`
+          },
+          crossSectionMarker: true // Mark as cross-section elective
+        },
+        
+        // Recurrence
+        recurrence: {
+          type: 'weekly',
+          description: 'Weekly elective class'
+        },
+        
+        // Display data
+        display: {
+          programCode: req.body.programCode || 'BCT',
+          semester: parseInt(semester),
+          section,
+          subjectCode: subject.code,
+          subjectName: subject.name,
+          teacherNames: teachers.map(t => t.shortName).join(', '),
+          roomName: room.name,
+          classType
+        },
+        
+        isActive: true
+      });
 
-    await electiveSlot.save();
+      electiveSlots.push(electiveSlot);
+    }
+
+    // Save both elective slots
+    await Promise.all(electiveSlots.map(slot => slot.save()));
 
     // Populate for response
-    await electiveSlot.populate([
-      { path: 'programId', select: 'code name' },
-      { path: 'subjectId', select: 'code name credits' },
-      { path: 'teacherIds', select: 'shortName fullName' },
-      { path: 'roomId', select: 'name roomNumber capacity' },
-      { path: 'academicYearId', select: 'title nepaliYear' }
-    ]);
+    await Promise.all(electiveSlots.map(slot => 
+      slot.populate([
+        { path: 'programId', select: 'code name' },
+        { path: 'subjectId', select: 'code name credits' },
+        { path: 'teacherIds', select: 'shortName fullName' },
+        { path: 'roomId', select: 'name roomNumber capacity' },
+        { path: 'academicYearId', select: 'title nepaliYear' }
+      ])
+    ));
 
     res.status(201).json({
       success: true,
-      message: 'Elective class scheduled successfully',
-      data: electiveSlot
+      message: `Elective class scheduled successfully for both sections (AB and CD)`,
+      data: {
+        electiveSlots,
+        electiveInfo: {
+          semester: parseInt(semester),
+          electiveNumber: electiveNumber || 1,
+          electiveType: electiveType || 'TECHNICAL',
+          sections: ['AB', 'CD'],
+          subject: {
+            id: subject._id,
+            code: subject.code,
+            name: subject.name
+          },
+          teachers: teachers.map(t => ({ id: t._id, name: t.fullName, shortName: t.shortName })),
+          room: { id: room._id, name: room.name },
+          timeSlot: { dayIndex, slotIndex }
+        }
+      }
     });
 
   } catch (error) {
