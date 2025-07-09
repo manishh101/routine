@@ -214,9 +214,13 @@ const ProgramRoutineManager = () => {
                     }}
                     loading={programsLoading}
                     size="large"
-                    dropdownStyle={{
-                      borderRadius: '12px',
-                      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+                    styles={{
+                      popup: {
+                        root: {
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+                        }
+                      }
                     }}
                   >
                     {(Array.isArray(programs) ? programs : []).map(program => (
@@ -362,9 +366,11 @@ const ProgramRoutineManager = () => {
                 </div>
               </div>
             }
-            headStyle={{
-              borderBottom: '1px solid #f0f2f5',
-              padding: '20px 24px'
+            styles={{
+              header: {
+                borderBottom: '1px solid #f0f2f5',
+                padding: '20px 24px'
+              }
             }}
             extra={
               <Space>

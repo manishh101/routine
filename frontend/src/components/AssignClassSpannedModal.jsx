@@ -25,7 +25,8 @@ import {
   ClockCircleOutlined,
   WarningOutlined,
   CheckCircleOutlined,
-  ColumnWidthOutlined
+  ColumnWidthOutlined,
+  TeamOutlined
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { 
@@ -106,12 +107,29 @@ const AssignClassSpannedModal = ({
   // Set form values when editing existing class
   useEffect(() => {
     if (existingClass && visible) {
+      // Convert lab group data to form fields
+      let labGroupType = 'groupA'; // default
+      let alternateStartsWith = 'A';
+      
+      if (existingClass.alternateWeeks) {
+        labGroupType = 'alternateWeeks';
+        alternateStartsWith = existingClass.alternateStartsWith || 'A';
+      } else if (existingClass.labGroup === 'bothGroups') {
+        labGroupType = 'bothGroups';
+      } else if (existingClass.labGroup === 'B') {
+        labGroupType = 'groupB';
+      } else {
+        labGroupType = 'groupA';
+      }
+      
       form.setFieldsValue({
         subjectId: existingClass.subjectId,
         teacherIds: existingClass.teacherIds || [],
         roomId: existingClass.roomId,
         classType: existingClass.classType,
-        notes: existingClass.notes || ''
+        notes: existingClass.notes || '',
+        labGroupType: existingClass.classType === 'P' ? labGroupType : undefined,
+        alternateStartsWith: existingClass.classType === 'P' && existingClass.alternateWeeks ? alternateStartsWith : undefined
       });
 
       // If this is a span master class, set the duration accordingly
@@ -306,6 +324,31 @@ const AssignClassSpannedModal = ({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      
+      // Process lab group types for practical classes
+      if (values.classType === 'P' && values.labGroupType) {
+        switch (values.labGroupType) {
+          case 'groupA':
+            values.labGroup = 'A';
+            break;
+          case 'groupB':
+            values.labGroup = 'B';
+            break;
+          case 'bothGroups':
+            values.labGroup = 'bothGroups';
+            break;
+          case 'alternateWeeks':
+            values.alternateWeeks = true;
+            values.alternateStartsWith = values.alternateStartsWith || 'A';
+            values.labGroup = 'alternateWeeks';
+            break;
+          default:
+            values.labGroup = 'A'; // fallback
+        }
+        
+        // Remove the temporary field
+        delete values.labGroupType;
+      }
       
       // Check if we have any conflicts
       const hasConflicts = conflicts.length > 0 || spannedConflicts.length > 0;
@@ -566,6 +609,64 @@ const AssignClassSpannedModal = ({
               </Form.Item>
             </Col>
           </Row>
+
+          {/* Lab Group Selection for Practical Classes */}
+          <Form.Item shouldUpdate>
+            {({ getFieldValue }) => {
+              const classType = getFieldValue('classType');
+              if (classType === 'P') {
+                return (
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        name="labGroupType"
+                        label={<Space><TeamOutlined />Lab Group Type</Space>}
+                        rules={[{ required: true, message: 'Please select lab group type' }]}
+                      >
+                        <Select placeholder="Select lab group type">
+                          <Option value="groupA">
+                            <Tag color="blue">Group A Only</Tag>
+                          </Option>
+                          <Option value="groupB">
+                            <Tag color="green">Group B Only</Tag>
+                          </Option>
+                          <Option value="bothGroups">
+                            <Tag color="purple">Both Groups (Same Time)</Tag>
+                          </Option>
+                          <Option value="alternateWeeks">
+                            <Tag color="orange">Alternate Weeks (A/B)</Tag>
+                          </Option>
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item shouldUpdate>
+                        {({ getFieldValue }) => {
+                          const labGroupType = getFieldValue('labGroupType');
+                          if (labGroupType === 'alternateWeeks') {
+                            return (
+                              <Form.Item
+                                name="alternateStartsWith"
+                                label="First Week Starts With"
+                                initialValue="A"
+                              >
+                                <Select>
+                                  <Option value="A">Group A</Option>
+                                  <Option value="B">Group B</Option>
+                                </Select>
+                              </Form.Item>
+                            );
+                          }
+                          return null;
+                        }}
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                );
+              }
+              return null;
+            }}
+          </Form.Item>
 
           <Row gutter={16}>
             <Col span={12}>

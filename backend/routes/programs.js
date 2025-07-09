@@ -21,17 +21,29 @@ const { check } = require('express-validator');
  *             required:
  *               - name
  *               - code
- *               - department
- *               - semesters
+ *               - departmentId
+ *               - totalSemesters
  *             properties:
  *               name:
  *                 type: string
  *               code:
  *                 type: string
- *               department:
+ *               departmentId:
  *                 type: string
- *               semesters:
+ *                 description: MongoDB ObjectId of the department
+ *               totalSemesters:
  *                 type: number
+ *               level:
+ *                 type: string
+ *                 enum: [Bachelor, Master, PhD]
+ *               description:
+ *                 type: string
+ *               syllabusYear:
+ *                 type: string
+ *               sections:
+ *                 type: array
+ *                 items:
+ *                   type: string
  *     responses:
  *       201:
  *         description: Program created successfully
@@ -45,8 +57,8 @@ router.post(
   [
     check('name', 'Name is required').not().isEmpty(),
     check('code', 'Code is required').not().isEmpty(),
-    check('department', 'Department is required').not().isEmpty(),
-    check('semesters', 'Semesters is required').isNumeric(),
+    check('departmentId', 'Department ID is required').isMongoId().withMessage('Department ID must be a valid ObjectId'),
+    check('totalSemesters', 'Total semesters is required').isNumeric().withMessage('Total semesters must be a number'),
   ],
   createProgram
 );

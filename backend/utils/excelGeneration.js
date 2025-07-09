@@ -31,15 +31,22 @@ async function generateClassRoutineExcel(programCode, semester, section) {
     // Day names
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     
-    // Create headers
+    // Create headers - include ALL time slots (including breaks)
     const headers = ['Day/Time'];
-    timeSlots.forEach(slot => {
-      if (!slot.isBreak) {
-        headers.push(`${slot.label}\n(${slot.startTime}-${slot.endTime})`);
+    const timeSlotMap = new Map(); // Map slot._id to column index
+    
+    timeSlots.forEach((slot, index) => {
+      timeSlotMap.set(slot._id.toString(), index + 1); // +1 because first column is Day/Time
+      
+      if (slot.isBreak) {
+        headers.push('BREAK');
       } else {
-        headers.push(slot.label);
+        headers.push(`${slot.startTime}-${slot.endTime}`);
       }
     });
+
+    console.log('TimeSlot mapping:', Array.from(timeSlotMap.entries()));
+    console.log('Headers:', headers);
 
     // Add header row
     worksheet.addRow(headers);
@@ -63,46 +70,125 @@ async function generateClassRoutineExcel(programCode, semester, section) {
       };
     });
 
-    // Create routine data structure
+    // Create routine data structure using time slot IDs
     const routineGrid = {};
+    const spanGroups = {}; // Track multi-period classes
     dayNames.forEach((day, dayIndex) => {
       routineGrid[dayIndex] = {};
+      // Initialize all time slots for each day using their _id as key
+      timeSlots.forEach(slot => {
+        routineGrid[dayIndex][slot._id.toString()] = null;
+      });
     });
 
-    // Populate routine grid
+    // Populate routine grid and track span groups
     routineSlots.forEach(slot => {
       const teacherNames = slot.teacherIds.map(t => t.shortName || t.fullName).join(', ');
       const roomName = slot.roomName_display || slot.roomId?.name || 'TBA';
       const classTypeDisplay = slot.classType === 'L' ? 'Lecture' : 
                               slot.classType === 'P' ? 'Practical' : 'Tutorial';
       
-      routineGrid[slot.dayIndex][slot.slotIndex] = {
+      const classData = {
         subject: `${slot.subjectCode_display || slot.subjectId?.code}\n${slot.subjectName_display || slot.subjectId?.name}`,
         teacher: teacherNames,
         room: roomName,
         type: classTypeDisplay,
-        notes: slot.notes || ''
+        notes: slot.notes || '',
+        spanId: slot.spanId,
+        spanMaster: slot.spanMaster
       };
+      
+      // Use slot.slotIndex directly (it should match time slot _id)
+      const slotKey = slot.slotIndex.toString();
+      console.log(`Processing slot: dayIndex=${slot.dayIndex}, slotIndex=${slot.slotIndex}, subject=${slot.subjectName_display || slot.subjectId?.name}`);
+      
+      if (routineGrid[slot.dayIndex] && routineGrid[slot.dayIndex].hasOwnProperty(slotKey)) {
+        routineGrid[slot.dayIndex][slotKey] = classData;
+        console.log(`Added class to grid[${slot.dayIndex}][${slotKey}]`);
+      } else {
+        console.warn(`Invalid slot mapping: dayIndex=${slot.dayIndex}, slotIndex=${slot.slotIndex}`);
+      }
+      
+      // Track span groups for multi-period classes
+      if (slot.spanId) {
+        if (!spanGroups[slot.spanId]) {
+          spanGroups[slot.spanId] = [];
+        }
+        spanGroups[slot.spanId].push({
+          dayIndex: slot.dayIndex,
+          slotId: slotKey,
+          slotIndex: parseInt(slotKey),
+          spanMaster: slot.spanMaster
+        });
+      }
     });
 
     // Add data rows
     dayNames.forEach((dayName, dayIndex) => {
       const row = [dayName];
       
-      timeSlots.forEach((slot, slotIndex) => {
-        const classData = routineGrid[dayIndex][slotIndex];
+      timeSlots.forEach((timeSlot) => {
+        const slotKey = timeSlot._id.toString();
+        const classData = routineGrid[dayIndex][slotKey];
         
-        if (slot.isBreak) {
+        if (timeSlot.isBreak) {
           row.push('BREAK');
         } else if (classData) {
-          const cellContent = `${classData.subject}\n${classData.teacher}\n${classData.room}\n[${classData.type}]`;
-          row.push(cellContent);
+          // Check if this is part of a multi-period class
+          if (classData.spanId && !classData.spanMaster) {
+            // This is a spanned slot but not the master - leave empty for merging
+            row.push('');
+          } else {
+            const cellContent = `${classData.subject}\n${classData.teacher}\n${classData.room}\n[${classData.type}]`;
+            row.push(cellContent);
+          }
         } else {
-          row.push(''); // Empty cell instead of 'Free'
+          row.push(''); // Empty cell
         }
       });
       
       worksheet.addRow(row);
+    });
+
+    // Handle cell merging for multi-period classes
+    Object.values(spanGroups).forEach(spanGroup => {
+      if (spanGroup.length > 1) {
+        // Sort span group by slot index to ensure proper merging
+        spanGroup.sort((a, b) => a.slotIndex - b.slotIndex);
+        
+        // Find the master cell
+        const masterCell = spanGroup.find(cell => cell.spanMaster);
+        if (masterCell) {
+          const startCol = masterCell.slotIndex + 2; // +2 because col 1 is day name and slots start from col 2
+          const endCol = spanGroup[spanGroup.length - 1].slotIndex + 2;
+          const rowNum = masterCell.dayIndex + 2; // +2 because row 1 is header and days start from row 2
+          
+          // Merge cells horizontally for multi-period classes
+          if (startCol < endCol) {
+            try {
+              worksheet.mergeCells(rowNum, startCol, rowNum, endCol);
+              
+              // Set the merged cell content and styling
+              const mergedCell = worksheet.getCell(rowNum, startCol);
+              mergedCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              mergedCell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE6F7FF' } // Light blue for multi-period classes
+              };
+              mergedCell.font = { size: 9, bold: true };
+              mergedCell.border = {
+                top: { style: 'thick', color: { argb: 'FF1677FF' } },
+                left: { style: 'thick', color: { argb: 'FF1677FF' } },
+                bottom: { style: 'thick', color: { argb: 'FF1677FF' } },
+                right: { style: 'thick', color: { argb: 'FF1677FF' } }
+              };
+            } catch (error) {
+              console.warn('Warning: Could not merge cells for multi-period class:', error.message);
+            }
+          }
+        }
+      }
     });
 
     // Style data rows
@@ -122,7 +208,8 @@ async function generateClassRoutineExcel(programCode, semester, section) {
         } else {
           // Check if it's a break column
           const slotIndex = colNumber - 2;
-          const isBreak = timeSlots[slotIndex]?.isBreak;
+          const timeSlot = timeSlots[slotIndex];
+          const isBreak = timeSlot?.isBreak;
           
           if (isBreak) {
             cell.fill = {

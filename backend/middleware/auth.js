@@ -15,31 +15,47 @@ exports.protect = async (req, res, next) => {
 
   // Make sure token exists
   if (!token) {
-    console.log('Authentication failed: No token provided');
-    return res.status(401).json({ msg: 'No token, authorization denied' });
+    return res.status(401).json({ 
+      success: false,
+      errors: [{ msg: 'No token, authorization denied' }] 
+    });
   }
 
   try {
     // Check if JWT_SECRET is set
     if (!process.env.JWT_SECRET) {
-      console.error('JWT_SECRET is not defined in environment variables');
-      return res.status(500).json({ msg: 'Server configuration error' });
+      return res.status(500).json({ 
+        success: false,
+        errors: [{ msg: 'Server configuration error' }] 
+      });
     }
 
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     if (!decoded || !decoded.user || !decoded.user.id) {
-      console.error('Token verification failed: Invalid payload structure');
-      return res.status(401).json({ msg: 'Token payload is invalid' });
+      return res.status(401).json({ 
+        success: false,
+        errors: [{ msg: 'Invalid token' }] 
+      });
     }
 
     // Set req.user to the user in the token
     const user = await User.findById(decoded.user.id).select('-password');
     
     if (!user) {
-      console.error(`User with ID ${decoded.user.id} not found in database`);
-      return res.status(401).json({ msg: 'User not found' });
+      return res.status(401).json({ 
+        success: false,
+        errors: [{ msg: 'User not found' }] 
+      });
+    }
+    
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(401).json({ 
+        success: false, 
+        errors: [{ msg: 'Account is deactivated' }] 
+      });
     }
     
     req.user = user;

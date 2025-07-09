@@ -1,4 +1,4 @@
-/* RoutineGrid.css - Excel-like styling for the routine grid */
+/* RoutineGrid.css - Excel-like styling with consistent borders */
 
 .routine-grid-wrapper {
   width: 100%;
@@ -16,26 +16,172 @@
 
 .routine-grid-table {
   width: 100%;
-  border-collapse: separate;
+  border-collapse: separate; /* Changed from collapse to separate */
   border-spacing: 0;
   font-size: 12px;
-  border: 1px solid #d9d9d9;
-  border-radius: 6px;
+  border: 2px solid #666666;
+  border-radius: 0;
   overflow: hidden;
+  background-color: #ffffff;
 }
 
-/* Header Styling */
+/* Simple cell styling */
+.routine-cell {
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.routine-cell:hover {
+  background-color: #f5f5f5 !important;
+}
+
+.routine-cell.empty-content:hover {
+  background-color: #f8f9fa !important;
+}
+
+/* Multi-Group Cell Styles for Both Groups (A & B) */
+.routine-cell.multi-group {
+  position: relative;
+  background: linear-gradient(to bottom, #f0f8ff 50%, #f0fff0 50%) !important;
+  border: 3px solid #1890ff !important;
+  box-shadow: inset 0 0 10px rgba(24, 144, 255, 0.1) !important;
+}
+
+.routine-cell.multi-group:hover {
+  background: linear-gradient(to bottom, #e6f3ff 50%, #e6ffe6 50%) !important;
+  border: 3px solid #0866d9 !important;
+  box-shadow: inset 0 0 15px rgba(8, 102, 217, 0.15) !important;
+}
+
+/* Alternate Weeks Multi-Group Cell Styles */
+.routine-cell.multi-group.alternate-weeks {
+  background: linear-gradient(45deg, #f0f8ff 25%, #f0fff0 25%, #f0fff0 50%, #f0f8ff 50%, #f0f8ff 75%, #f0fff0 75%) !important;
+  background-size: 16px 16px !important;
+  border: 3px solid #722ed1 !important;
+  box-shadow: inset 0 0 10px rgba(114, 46, 209, 0.1) !important;
+}
+
+.routine-cell.multi-group.alternate-weeks:hover {
+  background: linear-gradient(45deg, #e6f3ff 25%, #e6ffe6 25%, #e6ffe6 50%, #e6f3ff 50%, #e6f3ff 75%, #e6ffe6 75%) !important;
+  background-size: 16px 16px !important;
+  border: 3px solid #531dab !important;
+  box-shadow: inset 0 0 15px rgba(83, 29, 171, 0.15) !important;
+}
+
+/* Multi-Period Class Styles - Simple and clean */
+.multi-period-master-cell {
+  position: relative;
+  background: #f8f8f8 !important;
+  border: 2px solid #333 !important;
+  vertical-align: middle !important;
+  text-align: center !important;
+}
+
+/* Simple span marker */
+.span-marker {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: #333;
+  color: white;
+  padding: 2px 6px;
+  font-size: 9px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+
+/* Multi-period indicator styling */
+.multi-period-indicator {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(22, 119, 255, 0.9);
+  color: white;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: bold;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 20;
+}
+
+
+
+.single-period-cell {
+  border: 1px solid #d9d9d9;
+}
+
+.multi-period-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  height: 100%;
+  position: relative;
+  padding: 16px;
+}
+
+.span-marker {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  background: #1677ff;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+
+/* Header Styling - Professional Excel-like */
 .routine-grid-table thead th {
-  background: #fafafa;
-  border-bottom: 2px solid #d9d9d9;
-  border-right: 1px solid #d9d9d9;
-  padding: 12px 8px;
+  background: #f5f5f5;
+  border: 1px solid #c0c0c0;
+  padding: 12px;
   text-align: center;
   font-weight: 600;
-  color: #262626;
+  color: #333;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 15;
+  font-size: 12px;
+}
+
+.routine-grid-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 25;
+  background: #f5f5f5;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.routine-grid-table thead th:last-child {
+  border-right: 1px solid #c0c0c0;
+}
+
+/* Simple row styling */
+.day-row {
+  border-bottom: 1px solid #f0f0f0;
+  background-color: #ffffff;
+}
+
+.day-row:hover {
+  background-color: #f8f9fa;
+}
+
+.day-cell {
+  background: #fafafa !important;
+  border-right: 1px solid #d9d9d9;
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
 .routine-grid-table thead th:last-child {
@@ -43,7 +189,7 @@
 }
 
 .day-header {
-  background: #f0f0f0 !important;
+  background: #fafafa !important;
   min-width: 120px;
   position: sticky;
   left: 0;
@@ -62,8 +208,8 @@
 }
 
 .slot-label {
-  font-weight: bold;
-  color: #1890ff;
+  font-weight: 600;
+  color: #333;
 }
 
 .time-display {
@@ -71,49 +217,39 @@
   color: #666;
 }
 
-/* Row Styling */
+/* Row Styling - Professional Excel-like */
 .day-row {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #c0c0c0;
 }
 
 .day-row:hover {
-  background-color: #fafafa;
+  background-color: #f9f9f9;
 }
 
-.day-cell {
-  background: #f9f9f9;
-  border-right: 2px solid #d9d9d9;
-  padding: 12px 8px;
-  text-align: center;
-  font-weight: 600;
-  color: #262626;
-  position: sticky;
-  left: 0;
-  z-index: 5;
-  min-width: 120px;
-}
+/* Day cell styling moved to inline styles in JSX for better control */
 
 .day-name {
-  font-size: 13px;
-  font-weight: bold;
-  color: #1890ff;
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
 }
 
 .day-index {
   font-size: 10px;
-  color: #666;
+  color: #999;
   margin-top: 2px;
 }
 
-/* Cell Container Styling */
+/* Cell Container Styling - Minimal and clean */
 .class-cell-container {
-  border-right: 1px solid #f0f0f0;
+  border-right: 1px solid #e8e8e8;
   padding: 4px;
   height: 120px;
   vertical-align: top;
   position: relative;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease;
+  background-color: #ffffff;
 }
 
 .class-cell-container:last-child {
@@ -121,8 +257,7 @@
 }
 
 .class-cell-container:hover {
-  background-color: #e6f7ff;
-  border-color: #1890ff;
+  background-color: #f8f9fa;
 }
 
 .empty-cell-container {
@@ -130,24 +265,28 @@
 }
 
 .empty-cell-container:hover {
-  background-color: #f0f9ff;
+  background-color: #f5f5f5;
 }
 
 .has-class {
   background-color: #fff;
-  border-left: 3px solid #52c41a;
+  border-left: 2px solid #1890ff;
 }
 
 .break-cell-container {
-  background-color: #f0f0f0;
+  background-color: #f5f5f5;
   cursor: not-allowed;
+  text-align: center;
+  padding: 8px;
+  color: #666;
+  font-style: italic;
 }
 
 .break-cell-container:hover {
-  background-color: #f0f0f0;
+  background-color: #f5f5f5;
 }
 
-/* Cell Content Styling */
+/* Cell Content Styling - Simple and clean */
 .empty-cell {
   display: flex;
   align-items: center;
@@ -158,16 +297,17 @@
 
 .add-class-btn {
   border-style: dashed;
-  color: #1890ff;
-  border-color: #1890ff;
-  font-size: 11px;
-  height: 28px;
+  color: #666;
+  border-color: #c0c0c0;
+  font-size: 12px;
+  height: 30px;
+  background: transparent;
 }
 
 .add-class-btn:hover {
-  background-color: #e6f7ff;
-  border-color: #40a9ff;
-  color: #40a9ff;
+  background-color: #f9f9f9;
+  border-color: #1890ff;
+  color: #1890ff;
 }
 
 .break-cell {
@@ -180,12 +320,12 @@
 
 .break-label {
   color: #666;
-  font-weight: bold;
+  font-weight: 500;
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-transform: capitalize;
 }
 
+/* Class content styling - minimal and clean */
 .class-cell {
   height: 100%;
   width: 100%;
@@ -204,22 +344,27 @@
 
 .class-type-tag {
   font-size: 10px;
-  font-weight: bold;
+  font-weight: 500;
   padding: 2px 6px;
-  border-radius: 12px;
+  border-radius: 4px;
   margin: 0;
+  background: #f5f5f5;
+  color: #666;
+  border: 1px solid #e8e8e8;
 }
 
 .edit-btn {
   padding: 2px;
   height: 20px;
   width: 20px;
-  color: #666;
+  color: #999;
+  border: none;
+  background: transparent;
 }
 
 .edit-btn:hover {
   color: #1890ff;
-  background-color: #e6f7ff;
+  background-color: #f8f9fa;
 }
 
 .class-content {
@@ -248,7 +393,7 @@
 
 .subject-code {
   font-size: 10px;
-  color: #666;
+  color: #999;
   margin-top: 2px;
 }
 
@@ -271,25 +416,26 @@
 .room-info .label,
 .notes-info .label {
   font-size: 9px;
-  color: #666;
+  color: #999;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
 .teacher-info .value,
 .room-info .value,
 .notes-info .value {
   font-size: 10px;
-  color: #262626;
+  color: #666;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Legend Styling */
+/* Legend Styling - Clean and minimal */
 .grid-legend {
-  background: #f9f9f9;
+  background: #fafafa;
+  border-top: 1px solid #e8e8e8;
 }
 
 .legend-content {
@@ -301,7 +447,7 @@
 
 .legend-title {
   font-weight: 600;
-  color: #262626;
+  color: #333;
   margin-right: 8px;
 }
 
@@ -319,57 +465,161 @@
   color: #666;
 }
 
-/* Responsive Design */
+/* Responsive Design - Excel-like on all devices */
 @media (max-width: 1200px) {
   .routine-grid-table {
     font-size: 11px;
+    min-width: 900px;
   }
   
   .time-slot-header {
-    min-width: 150px;
-    max-width: 170px;
+    min-width: 130px;
+    max-width: 150px;
+    padding: 12px 6px;
   }
   
-  .class-cell-container {
-    height: 100px;
+  .routine-cell {
+    height: 85px;
+    min-width: 130px;
+  }
+  
+  .day-cell {
+    min-width: 110px;
+    padding: 12px 8px;
   }
 }
 
 @media (max-width: 768px) {
   .routine-grid-table {
     font-size: 10px;
+    min-width: 800px;
   }
   
   .time-slot-header {
     min-width: 120px;
-    max-width: 140px;
+    max-width: 130px;
+    padding: 10px 4px;
   }
   
-  .class-cell-container {
+  .routine-cell {
     height: 80px;
+    min-width: 120px;
   }
   
-  .class-cell {
-    padding: 4px;
+  .day-cell {
+    min-width: 100px;
+    padding: 10px 6px;
+    font-size: 11px;
+  }
+  
+  .routine-grid-table thead th {
+    padding: 12px 8px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .routine-grid-container {
+    margin: 0 -12px;
+  }
+  
+  .routine-grid-table {
+    font-size: 9px;
+    min-width: 700px;
+  }
+  
+  .time-slot-header {
+    min-width: 100px;
+    max-width: 110px;
+    padding: 8px 2px;
+  }
+  
+  .routine-cell {
+    height: 75px;
+    min-width: 100px;
   }
   
   .day-cell {
     min-width: 80px;
+    padding: 8px 4px;
+    font-size: 10px;
   }
 }
 
-/* Print Styles */
+/* Print Styles - Excel-like printing */
 @media print {
   .routine-grid-table {
-    font-size: 9px;
+    font-size: 8px;
+    border: 2px solid #000;
+    background: white !important;
   }
   
-  .class-cell-container {
+  .routine-grid-table thead th {
+    background: #f0f0f0 !important;
+    border: 1px solid #000 !important;
+    color: #000 !important;
+    padding: 8px 4px;
+    font-size: 8px;
+  }
+  
+  .routine-cell {
     height: 60px;
+    border: 1px solid #000 !important;
+    background: white !important;
   }
   
-  .edit-btn,
-  .add-class-btn {
-    display: none;
+  .day-cell {
+    background: #f0f0f0 !important;
+    border: 1px solid #000 !important;
+    color: #000 !important;
+    font-size: 8px;
   }
+  
+  .break-cell {
+    background: #f5f5f5 !important;
+    border: 1px solid #000 !important;
+  }
+  
+  /* Hide interactive elements */
+  .routine-actions,
+  .add-class-btn,
+  .span-marker {
+    display: none !important;
+  }
+  
+  /* Ensure text is black for printing */
+  * {
+    color: #000 !important;
+  }
+}
+
+/* Standard table cell styling - Professional Excel borders */
+.routine-grid-table td {
+  border: 1px solid #c0c0c0;
+  position: relative;
+  min-width: 160px;
+  width: auto;
+}
+
+/* Day cells styling */
+.routine-grid-table td.day-cell {
+  background: #f5f5f5;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Regular cells don't interfere with sticky positioning */
+.routine-grid-table td:not(.day-cell) {
+  z-index: 1;
+}
+
+/* Multi-period cell border styling */
+.multi-period-cell + .multi-period-cell {
+  border-left: none !important;
 }

@@ -2,6 +2,63 @@ import axios from 'axios';
 
 const API_URL = '/api';
 
+// Request queue for handling rate limiting
+class RequestQueue {
+  constructor() {
+    this.queue = [];
+    this.processing = false;
+    this.delay = 100; // Start with 100ms delay between requests
+    this.maxDelay = 5000; // Maximum delay of 5 seconds
+  }
+
+  async add(requestFn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ requestFn, resolve, reject });
+      this.process();
+    });
+  }
+
+  async process() {
+    if (this.processing || this.queue.length === 0) return;
+    
+    this.processing = true;
+    
+    while (this.queue.length > 0) {
+      const { requestFn, resolve, reject } = this.queue.shift();
+      
+      try {
+        const result = await requestFn();
+        resolve(result);
+        // Reset delay on success
+        this.delay = Math.max(100, this.delay * 0.8);
+      } catch (error) {
+        if (error.response?.status === 429) {
+          // Rate limited - increase delay and retry
+          this.delay = Math.min(this.maxDelay, this.delay * 1.5);
+          console.warn(`Rate limited, increasing delay to ${this.delay}ms`);
+          
+          // Put the request back at the front of the queue
+          this.queue.unshift({ requestFn, resolve, reject });
+          
+          // Wait before processing next request
+          await new Promise(resolve => setTimeout(resolve, this.delay));
+          continue;
+        }
+        reject(error);
+      }
+      
+      // Small delay between requests to prevent overwhelming the server
+      if (this.queue.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, this.delay));
+      }
+    }
+    
+    this.processing = false;
+  }
+}
+
+const requestQueue = new RequestQueue();
+
 // Create axios instance with base URL
 const api = axios.create({
   baseURL: API_URL,
@@ -54,6 +111,43 @@ api.interceptors.response.use(
       data: error.response?.data,
       message: error.message
     });
+    
+    // Handle rate limiting (429 errors)
+    if (error.response?.status === 429) {
+      console.warn('Rate limit exceeded, implementing retry with backoff');
+      
+      // Show user-friendly message for rate limiting
+      if (typeof window !== 'undefined' && window.antd?.message) {
+        window.antd.message.warning({
+          content: 'Server is busy, please wait a moment...',
+          duration: 3,
+          key: 'rate-limit-warning'
+        });
+      }
+      
+      if (!originalRequest._retryCount) {
+        originalRequest._retryCount = 0;
+      }
+      
+      if (originalRequest._retryCount < 3) {
+        originalRequest._retryCount++;
+        const retryDelay = Math.min(1000 * Math.pow(2, originalRequest._retryCount), 10000);
+        
+        console.log(`Retrying request in ${retryDelay}ms (attempt ${originalRequest._retryCount}/3)`);
+        
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        return api(originalRequest);
+      } else {
+        // If all retries failed, show a more specific error
+        if (typeof window !== 'undefined' && window.antd?.message) {
+          window.antd.message.error({
+            content: 'Server is temporarily overloaded. Please try again in a few minutes.',
+            duration: 5,
+            key: 'rate-limit-error'
+          });
+        }
+      }
+    }
     
     // Handle authentication errors
     if (error.response?.status === 401 && !originalRequest._retry) {
@@ -117,6 +211,31 @@ api.interceptors.response.use(
   }
 );
 
+// Helper function to queue API requests to prevent rate limiting
+const queuedRequest = (requestFn, description = 'API request') => {
+  return requestQueue.add(async () => {
+    const startTime = performance.now();
+    console.log(`Starting ${description}`);
+    
+    try {
+      const response = await requestFn();
+      const endTime = performance.now();
+      console.log(`Successfully completed ${description} in ${endTime - startTime}ms`);
+      return response;
+    } catch (error) {
+      const endTime = performance.now();
+      console.error(`Error in ${description} after ${endTime - startTime}ms:`, {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        timeout: error.code === 'ECONNABORTED'
+      });
+      throw error;
+    }
+  });
+};
+
 // Auth API
 export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
@@ -137,137 +256,86 @@ export const authAPI = {
 // Teachers API
 export const teachersAPI = {
   getAllTeachers: () => {
-    console.log('Fetching all teachers - Starting request');
-    const startTime = performance.now();
-    return api.get('/teachers')
-      .then(response => {
-        const endTime = performance.now();
-        console.log(`Successfully fetched teachers in ${endTime - startTime}ms`, response);
-        return response;
-      })
-      .catch(error => {
-        const endTime = performance.now();
-        console.error(`Error fetching teachers after ${endTime - startTime}ms:`, {
-          message: error.message,
-          code: error.code,
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          timeout: error.code === 'ECONNABORTED',
-          stack: error.stack
-        });
-        throw error;
-      });
+    return queuedRequest(
+      () => api.get('/teachers'),
+      'fetching all teachers'
+    );
   },
   
   getTeachers: () => {
-    console.log('Fetching all teachers - Starting request');
-    const startTime = performance.now();
-    return api.get('/teachers')
-      .then(response => {
-        const endTime = performance.now();
-        console.log(`Successfully fetched teachers in ${endTime - startTime}ms`, response);
-        return response;
-      })
-      .catch(error => {
-        const endTime = performance.now();
-        console.error(`Error fetching teachers after ${endTime - startTime}ms:`, {
-          message: error.message,
-          code: error.code,
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          timeout: error.code === 'ECONNABORTED',
-          stack: error.stack
-        });
-        throw error;
-      });
+    return queuedRequest(
+      () => api.get('/teachers'),
+      'fetching teachers'
+    );
   },
   
   getTeacher: (id) => {
-    console.log(`Fetching teacher with ID: ${id}`);
-    return api.get(`/teachers/${id}`)
-      .catch(error => {
-        console.error(`Error fetching teacher ${id}:`, error);
-        throw error;
-      });
+    return queuedRequest(
+      () => api.get(`/teachers/${id}`),
+      `fetching teacher ${id}`
+    );
   },
   
   getTeacherSchedule: (id) => {
-    console.log(`Fetching schedule for teacher with ID: ${id}`);
-    return api.get(`/teachers/${id}/schedule`)
-      .then(response => {
-        console.log(`Successfully fetched schedule for teacher ${id}`);
-        
-        // Advanced logging to help diagnose issues
+    return queuedRequest(
+      () => api.get(`/teachers/${id}/schedule`).then(response => {
         if (response.data) {
           console.log('Teacher schedule response structure:', {
             hasSuccessProperty: 'success' in response.data,
             hasDataProperty: 'data' in response.data,
+            success: response.data.success,
             dataType: typeof response.data.data,
             topLevelKeys: Object.keys(response.data)
           });
           
-          // Check nested routine location
+          // Check nested routine location - backend now returns routine directly
           if (response.data.data?.routine) {
             const routine = response.data.data.routine;
             console.log('Found routine in response.data.data', {
               dayCount: Object.keys(routine).length,
               firstDay: Object.keys(routine)[0],
-              hasClasses: !!Object.values(routine)[0]
+              sampleSlots: Object.keys(routine)[0] ? Object.keys(routine[Object.keys(routine)[0]]).length : 0
             });
           } else if (response.data.routine) {
             const routine = response.data.routine;
             console.log('Found routine directly in response.data', {
               dayCount: Object.keys(routine).length,
               firstDay: Object.keys(routine)[0],
-              hasClasses: !!Object.values(routine)[0]
+              sampleSlots: Object.keys(routine)[0] ? Object.keys(routine[Object.keys(routine)[0]]).length : 0
             });
           } else {
-            console.warn('Could not find routine object in response');
+            console.warn('Could not find routine object in response - teacher may have no classes');
           }
         }
         
+        // Backend now returns { success: true, data: { routine: {}, ... } }
         return response.data;
-      })
-      .catch(error => {
-        console.error(`Error fetching schedule for teacher ${id}:`, {
-          message: error.message,
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          error: error.response?.data
-        });
-        throw error;
-      });
+      }),
+      `fetching schedule for teacher ${id}`
+    );
   },
   
   exportTeacherSchedule: (id) => {
-    console.log(`Exporting schedule for teacher with ID: ${id}`);
-    return api.get(`/teachers/${id}/schedule/excel`, {
-      responseType: 'blob'
-    })
-    .then(response => {
-      console.log(`Successfully exported schedule for teacher ${id}`);
-      return response; // For blob responses, return the full response
-    })
-    .catch(error => {
-      console.error(`Error exporting schedule for teacher ${id}:`, error);
-      throw error;
-    });
+    return queuedRequest(
+      () => api.get(`/teachers/${id}/schedule/excel`, { responseType: 'blob' }),
+      `exporting schedule for teacher ${id}`
+    );
   },
   
   exportTeacherScheduleToExcel: (id) => {
-    console.log(`Exporting schedule for teacher with ID: ${id}`);
-    return api.get(`/teachers/${id}/schedule/excel`, {
-      responseType: 'blob'
-    }).catch(error => {
-      console.error(`Error exporting schedule for teacher ${id}:`, error);
-      throw error;
-    });
+    return queuedRequest(
+      () => api.get(`/teachers/${id}/schedule/excel`, { responseType: 'blob' }),
+      `exporting schedule to Excel for teacher ${id}`
+    );
   }
 };
 
 // Programs API
 export const programsAPI = {
-  getPrograms: () => api.get('/programs')
+  getPrograms: () => queuedRequest(
+    () => api.get('/programs'),
+    'fetching programs'
+  )
 };
 
 // Program Semesters API
@@ -279,71 +347,89 @@ export const programSemestersAPI = {
 export const routinesAPI = {
   getRoutine: (programCode, semester, section) => 
     api.get(`/routines/${programCode}/${semester}/${section}`),
-  
-  exportRoutineToExcel: (programCode, semester, section) =>
-    api.get(`/routines/${programCode}/${semester}/${section}/export`, {
-      responseType: 'blob'
-    }),
-    
+  assignClass: (programCode, semester, section, data) => 
+    api.post(`/routines/${programCode}/${semester}/${section}/assign`, data),
+  assignClassSpanned: (data) => 
+    api.post('/routines/assign-class-spanned', data),
+  clearClass: (programCode, semester, section, data) => 
+    api.delete(`/routines/${programCode}/${semester}/${section}/clear`, { data }),
+  clearSpanGroup: (spanId) => 
+    api.delete(`/routines/clear-span-group/${spanId}`),
+  clearEntireRoutine: (programCode, semester, section) => 
+    api.delete(`/routines/${programCode}/${semester}/${section}/clear-all`),
+  exportRoutineToExcel: (programCode, semester, section) => 
+    api.get(`/routines/${programCode}/${semester}/${section}/export/excel`, { responseType: 'blob' }),
   importRoutineFromExcel: (programCode, semester, section, file) => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('programCode', programCode);
-    formData.append('semester', semester);
-    formData.append('section', section);
-    
-    return api.post(`/routines/${programCode}/${semester}/${section}/import`, formData, {
+    return api.post(`/routines/${programCode}/${semester}/${section}/import/excel`, formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+        'Content-Type': 'multipart/form-data'
+      }
     });
   },
-    
-  assignClass: (programCode, semester, section, classData) =>
-    api.post(
-      `/routines/${programCode}/${semester}/${section}/assign`, 
-      classData
-    ),
-    
-  clearClass: (programCode, semester, section, classData) =>
-    api.delete(
-      `/routines/${programCode}/${semester}/${section}/clear`, 
-      { data: classData }
-    ),
-  
-  // For assigning a class that spans multiple periods
-  assignClassSpanned: (data) =>
-    api.post(`/routines/assign-class-spanned`, data),
-    
-  // Clear a span group (multi-period class)
-  clearSpanGroup: (spanId) =>
-    api.delete(`/routines/clear-span-group/${spanId}`),
-    
-  // Clear entire weekly routine for a program/semester/section
-  clearEntireRoutine: (programCode, semester, section) =>
-    api.delete(`/routines/${programCode}/${semester}/${section}/clear-all`),
-    
-  // Check teacher availability
-  checkTeacherAvailability: (teacherId, dayIndex, slotIndex) =>
+  checkTeacherAvailability: (teacherId, dayIndex, slotIndex) => 
     api.get(`/routines/teachers/${teacherId}/availability?dayIndex=${dayIndex}&slotIndex=${slotIndex}`),
-    
-  // Check room availability
-  checkRoomAvailability: (roomId, dayIndex, slotIndex) =>
+  checkRoomAvailability: (roomId, dayIndex, slotIndex) => 
     api.get(`/routines/rooms/${roomId}/availability?dayIndex=${dayIndex}&slotIndex=${slotIndex}`),
-    
-  // Get available subjects for a program-semester
-  getAvailableSubjects: (programCode, semester) =>
-    api.get(`/routines/${programCode}/${semester}/subjects`)
+  getVacantRooms: (dayIndex, slotIndex) => 
+    api.get(`/routines/rooms/vacant?dayIndex=${dayIndex}&slotIndex=${slotIndex}`)
 };
 
 // Subjects API
 export const subjectsAPI = {
-  getSubjects: () => api.get('/subjects'),
-  getSubjectsByProgramAndSemester: (programCode, semester) => {
-    const url = `/routines/${programCode}/${semester}/subjects`;
-    console.log('Making subjects API call to:', url);
-    return api.get(url);
-  }
+  getSubjects: () => queuedRequest(
+    () => api.get('/subjects'),
+    'fetching subjects'
+  ),
+  getSubjectsByProgramAndSemester: async (programCode, semester) => {
+    console.log('Making subjects API call for program:', programCode, 'semester:', semester);
+    
+    // Use queued requests for both API calls
+    const programsResponse = await queuedRequest(
+      () => api.get('/programs'),
+      `fetching programs for subject lookup (${programCode})`
+    );
+    
+    const programs = programsResponse.data;
+    const program = programs.find(p => p.code === programCode);
+    
+    if (!program) {
+      throw new Error(`Program with code ${programCode} not found`);
+    }
+    
+    // Get subjects by program ID using queued request
+    const subjectsResponse = await queuedRequest(
+      () => api.get(`/subjects/program/${program._id}`),
+      `fetching subjects for program ${program._id}`
+    );
+    
+    const allSubjects = subjectsResponse.data;
+    
+    // Filter by semester
+    const filteredSubjects = allSubjects.filter(subject => subject.semester === parseInt(semester));
+    
+    // Transform the data to match frontend expectations
+    const transformedSubjects = filteredSubjects.map(subject => ({
+      ...subject,
+      subjectId: subject._id,
+      subjectCode_display: subject.code,
+      subjectName_display: subject.name,
+      courseType: subject.defaultClassType || 'Theory',
+      defaultHoursTheory: subject.weeklyHours?.theory || subject.credits?.theory || 0,
+      defaultHoursPractical: subject.weeklyHours?.practical || subject.credits?.practical || 0,
+      defaultHoursTutorial: subject.weeklyHours?.tutorial || subject.credits?.tutorial || 0
+    }));
+    
+    console.log(`Found ${transformedSubjects.length} subjects for ${programCode} semester ${semester}`);
+    
+    return { data: transformedSubjects };
+  },
+  getSubjectsByProgram: (programId) => queuedRequest(
+    () => api.get(`/subjects/program/${programId}`),
+    `fetching subjects for program ${programId}`
+  ),
+  getSubjectsBySemester: (semester) => api.get(`/subjects/semester/${semester}`)
 };
 
 // Rooms API
@@ -353,13 +439,145 @@ export const roomsAPI = {
 
 // TimeSlots API
 export const timeSlotsAPI = {
-  getTimeSlots: () => api.get('/timeslots')
+  getTimeSlots: () => api.get('/time-slots')
 };
 
 // Users API
 export const usersAPI = {
   getProfile: () => api.get('/users/me'),
-  updateProfile: (userData) => api.put('/users/me', userData)
+  updateProfile: (userData) => api.put('/users/me', userData),
+  getAllUsers: () => api.get('/users'),
+  createUser: (userData) => api.post('/users', userData),
+  getUser: (id) => api.get(`/users/${id}`),
+  updateUser: (id, userData) => api.put(`/users/${id}`, userData),
+  deleteUser: (id) => api.delete(`/users/${id}`),
+  getUsersByRole: (role) => api.get(`/users/role/${role}`),
+  changeUserPassword: (id, data) => api.put(`/users/${id}/password`, data),
+  deactivateUser: (id) => api.put(`/users/${id}/deactivate`),
+  activateUser: (id) => api.put(`/users/${id}/activate`)
+};
+
+// Departments API
+export const departmentsAPI = {
+  getDepartments: () => api.get('/departments'),
+  createDepartment: (data) => api.post('/departments', data),
+  getDepartment: (id) => api.get(`/departments/${id}`),
+  updateDepartment: (id, data) => api.put(`/departments/${id}`, data),
+  deleteDepartment: (id) => api.delete(`/departments/${id}`),
+  getDepartmentTeachers: (id) => api.get(`/departments/${id}/teachers`)
+};
+
+// Academic Calendars API
+export const academicCalendarsAPI = {
+  getCalendars: () => api.get('/academic-calendars'),
+  createCalendar: (data) => api.post('/academic-calendars', data),
+  getCalendar: (id) => api.get(`/academic-calendars/${id}`),
+  updateCalendar: (id, data) => api.put(`/academic-calendars/${id}`, data),
+  deleteCalendar: (id) => api.delete(`/academic-calendars/${id}`)
+};
+
+// Sessions API
+export const sessionsAPI = {
+  getAllSessions: () => api.get('/sessions'),
+  getSessionDashboard: () => api.get('/sessions/dashboard'),
+  createSession: (data) => api.post('/sessions/create', data),
+  getSession: (id) => api.get(`/sessions/${id}`),
+  updateSession: (id, data) => api.put(`/sessions/${id}`, data),
+  deleteSession: (id) => api.delete(`/sessions/${id}`),
+  activateSession: (id) => api.put(`/sessions/${id}/activate`),
+  completeSession: (id) => api.put(`/sessions/${id}/complete`),
+  archiveSession: (id) => api.put(`/sessions/${id}/archive`),
+  approveSession: (id) => api.put(`/sessions/${id}/approve`),
+  getSessionAnalytics: (id) => api.get(`/sessions/${id}/analytics`),
+  copyRoutineFromSession: (id, sourceId) => api.post(`/sessions/${id}/routine/copy-from/${sourceId}`),
+  createRoutineVersion: (id, data) => api.put(`/sessions/${id}/routine/version`, data),
+  getRoutineVersions: (id) => api.get(`/sessions/${id}/routine/versions`),
+  rollbackToVersion: (id, version) => api.put(`/sessions/${id}/routine/rollback/${version}`),
+  applyTemplateToSession: (id, templateId, data) => api.post(`/sessions/${id}/routine/apply-template/${templateId}`, data),
+  saveSessionAsTemplate: (id, data) => api.post(`/sessions/${id}/routine/save-as-template`, data),
+  compareSessionAnalytics: (id, compareSessionId) => api.get(`/sessions/${id}/analytics/comparison/${compareSessionId}`),
+  getCrossSessionAnalytics: () => api.get('/sessions/analytics/cross-session'),
+  optimizeSessionRoutine: (id, data) => api.post(`/sessions/${id}/routine/optimize`, data),
+  validateSessionRoutine: (id, data) => api.post(`/sessions/${id}/routine/validate`, data),
+  getSessionConflicts: (id, data) => api.post(`/sessions/${id}/routine/conflicts`, data)
+};
+
+// Elective Groups API
+export const electiveGroupsAPI = {
+  getElectiveGroups: () => api.get('/elective-groups'),
+  createElectiveGroup: (data) => api.post('/elective-groups', data),
+  getElectiveGroup: (id) => api.get(`/elective-groups/${id}`),
+  updateElectiveGroup: (id, data) => api.put(`/elective-groups/${id}`, data),
+  deleteElectiveGroup: (id) => api.delete(`/elective-groups/${id}`),
+  assignElectiveToSection: (data) => api.post('/elective-groups/assign', data),
+  getElectivesByProgram: (programId, semester) => api.get(`/elective-groups/program/${programId}/semester/${semester}`),
+  getElectiveAnalytics: (id) => api.get(`/elective-groups/${id}/analytics`)
+};
+
+// Lab Groups API
+export const labGroupsAPI = {
+  getLabGroups: () => api.get('/lab-groups'),
+  createLabGroup: (data) => api.post('/lab-groups', data),
+  getLabGroup: (id) => api.get(`/lab-groups/${id}`),
+  updateLabGroup: (id, data) => api.put(`/lab-groups/${id}`, data),
+  deleteLabGroup: (id) => api.delete(`/lab-groups/${id}`),
+  autoCreateLabGroups: (data) => api.post('/lab-groups/auto-create', data),
+  getLabGroupsByProgram: (programId, semester) => api.get(`/lab-groups/program/${programId}/semester/${semester}`),
+  assignStudentsToLabGroup: (id, data) => api.post(`/lab-groups/${id}/assign-students`, data)
+};
+
+// Conflicts API
+export const conflictsAPI = {
+  detectConflicts: () => api.get('/conflicts/detect'),
+  resolveConflict: (id, data) => api.post(`/conflicts/${id}/resolve`, data),
+  getConflictReport: () => api.get('/conflicts/report'),
+  getActiveConflicts: () => api.get('/conflicts/active'),
+  markConflictResolved: (id) => api.put(`/conflicts/${id}/resolve`)
+};
+
+// Analytics API
+export const analyticsAPI = {
+  getTeacherWorkload: (id) => api.get(`/teachers/${id}/workload`),
+  getRoomUtilization: () => api.get('/rooms/utilization'),
+  getScheduleAnalytics: () => api.get('/analytics/schedule'),
+  getSystemMetrics: () => api.get('/analytics/system'),
+  getDashboardMetrics: () => api.get('/analytics/dashboard'),
+  getTeacherWorkloadReport: () => api.get('/analytics/teacher-workload'),
+  getRoomUtilizationReport: () => api.get('/analytics/room-utilization'),
+  getConflictAnalytics: () => api.get('/analytics/conflicts')
+};
+
+// Templates API
+export const templatesAPI = {
+  getTemplates: () => api.get('/templates'),
+  createTemplate: (data) => api.post('/templates', data),
+  getTemplate: (id) => api.get(`/templates/${id}`),
+  updateTemplate: (id, data) => api.put(`/templates/${id}`, data),
+  deleteTemplate: (id) => api.delete(`/templates/${id}`),
+  applyTemplate: (id, data) => api.post(`/templates/${id}/apply`, data),
+  cloneTemplate: (id) => api.post(`/templates/${id}/clone`)
+};
+
+// Room Vacancy API
+export const roomVacancyAPI = {
+  getVacantRooms: (dayIndex, slotIndex) => 
+    api.get(`/rooms/vacant?dayIndex=${dayIndex}&slotIndex=${slotIndex}`),
+  getRoomVacancyAnalytics: () => api.get('/rooms/vacancy/analytics'),
+  getRoomSchedule: (roomId) => api.get(`/rooms/${roomId}/schedule`),
+  getRoomVacancyForDay: (roomId, dayIndex) => 
+    api.get(`/rooms/${roomId}/vacancy/day/${dayIndex}`),
+  getAllRoomVacancies: () => api.get('/rooms/vacancy/all')
+};
+
+// Routine Slots API
+export const routineSlotsAPI = {
+  getRoutineSlots: () => api.get('/routine-slots'),
+  createRoutineSlot: (data) => api.post('/routine-slots', data),
+  updateRoutineSlot: (id, data) => api.put(`/routine-slots/${id}`, data),
+  deleteRoutineSlot: (id) => api.delete(`/routine-slots/${id}`),
+  getWeeklySchedule: () => api.get('/routine-slots/schedule/weekly'),
+  checkConflicts: (data) => api.post('/routine-slots/check-conflicts', data),
+  bulkCreateSlots: (data) => api.post('/routine-slots/bulk', data)
 };
 
 export default api;

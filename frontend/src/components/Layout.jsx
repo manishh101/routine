@@ -14,7 +14,15 @@ import {
   MenuUnfoldOutlined,
   HomeOutlined,
   ClockCircleOutlined,
-  FileExcelOutlined
+  FileExcelOutlined,
+  BankOutlined,
+  SettingOutlined,
+  BranchesOutlined,
+  ExperimentOutlined,
+  WarningOutlined,
+  BarChartOutlined,
+  FileTextOutlined,
+  EnvironmentOutlined
 } from '@ant-design/icons';
 import useAuthStore from '../contexts/authStore';
 import './MobileResponsive.css';
@@ -167,6 +175,96 @@ const Layout = () => {
       icon: <ClockCircleOutlined />, 
       label: 'Time Slots',
       title: collapsed ? 'Time Slots' : undefined
+    },
+    { 
+      key: '/departments-manager', 
+      icon: <BankOutlined />, 
+      label: 'Departments',
+      title: collapsed ? 'Departments' : undefined
+    },
+    { type: 'divider' },
+    { 
+      key: 'system-section', 
+      label: collapsed ? '' : 'System Management', 
+      type: 'group',
+      style: { 
+        color: '#52c41a', 
+        fontWeight: 600,
+        fontSize: '12px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        margin: collapsed ? '8px 0 4px 0' : '16px 0 8px 0',
+        display: collapsed ? 'none' : 'block'
+      }
+    },
+    { 
+      key: '/academic-calendar-manager', 
+      icon: <CalendarOutlined />, 
+      label: 'Academic Calendar',
+      title: collapsed ? 'Academic Calendar' : undefined
+    },
+    { 
+      key: '/session-manager', 
+      icon: <SettingOutlined />, 
+      label: 'Session Management',
+      title: collapsed ? 'Session Management' : undefined
+    },
+    { 
+      key: '/elective-manager', 
+      icon: <BranchesOutlined />, 
+      label: 'Elective Management',
+      title: collapsed ? 'Elective Management' : undefined
+    },
+    { 
+      key: '/conflict-detection', 
+      icon: <WarningOutlined />, 
+      label: 'Conflict Detection',
+      title: collapsed ? 'Conflict Detection' : undefined
+    },
+    { type: 'divider' },
+    { 
+      key: 'core-features-section', 
+      label: collapsed ? '' : 'Core Features', 
+      type: 'group',
+      style: { 
+        color: '#722ed1', 
+        fontWeight: 600,
+        fontSize: '12px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        margin: collapsed ? '8px 0 4px 0' : '16px 0 8px 0',
+        display: collapsed ? 'none' : 'block'
+      }
+    },
+    { 
+      key: '/analytics-dashboard', 
+      icon: <BarChartOutlined />, 
+      label: 'Analytics Dashboard',
+      title: collapsed ? 'Analytics Dashboard' : undefined
+    },
+    { 
+      key: '/lab-group-manager', 
+      icon: <ExperimentOutlined />, 
+      label: 'Lab Groups',
+      title: collapsed ? 'Lab Groups' : undefined
+    },
+    { 
+      key: '/user-manager', 
+      icon: <TeamOutlined />, 
+      label: 'User Management',
+      title: collapsed ? 'User Management' : undefined
+    },
+    { 
+      key: '/template-manager', 
+      icon: <FileTextOutlined />, 
+      label: 'Templates',
+      title: collapsed ? 'Templates' : undefined
+    },
+    { 
+      key: '/room-vacancy-analysis', 
+      icon: <EnvironmentOutlined />, 
+      label: 'Room Vacancy',
+      title: collapsed ? 'Room Vacancy' : undefined
     },
     // { 
     //   key: '/excel-demo-admin', 

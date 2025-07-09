@@ -20,6 +20,20 @@ import ExcelDemo from './pages/ExcelDemo';
 import TeacherExcelDemo from './pages/TeacherExcelDemo';
 import TeacherAPITest from './pages/TeacherAPITest';
 
+// New Admin Pages - Phase 1
+import DepartmentManagement from './pages/admin/DepartmentManagement';
+import AcademicCalendarManagement from './pages/admin/AcademicCalendarManagement';
+import SessionManagement from './pages/admin/SessionManagement';
+import ElectiveManagement from './pages/admin/ElectiveManagement';
+import ConflictDetection from './pages/admin/ConflictDetection';
+
+// New Admin Pages - Phase 2
+import AnalyticsDashboard from './pages/admin/AnalyticsDashboard';
+import LabGroupManagement from './pages/admin/LabGroupManagement';
+import UserManagement from './pages/admin/UserManagement';
+import TemplateManagement from './pages/admin/TemplateManagement';
+import RoomVacancyAnalysis from './pages/admin/RoomVacancyAnalysis';
+
 // Protected route component
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
   const { token, user, isInitialized } = useAuthStore();
@@ -46,21 +60,43 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
-        // Don't retry on 4xx errors (client errors)
+        // Don't retry on 4xx errors (client errors) except for 429
         if (error?.response?.status >= 400 && error?.response?.status < 500) {
+          // Retry on 429 (Too Many Requests) with exponential backoff
+          if (error?.response?.status === 429) {
+            return failureCount < 3;
+          }
           return false;
         }
         // Only retry up to 2 times for other errors
         return failureCount < 2;
       },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      cacheTime: 10 * 60 * 1000, // 10 minutes
+      retryDelay: (attemptIndex, error) => {
+        // For 429 errors, use longer delays
+        if (error?.response?.status === 429) {
+          return Math.min(2000 * 2 ** attemptIndex, 15000); // 2s, 4s, 8s, max 15s
+        }
+        return Math.min(1000 * 2 ** attemptIndex, 30000);
+      },
+      staleTime: 10 * 60 * 1000, // 10 minutes - longer cache to reduce requests
+      gcTime: 15 * 60 * 1000, // 15 minutes (was cacheTime)
       // Add error boundary
       useErrorBoundary: false,
     },
     mutations: {
-      retry: false, // Don't retry mutations
+      retry: (failureCount, error) => {
+        // Retry mutations on 429 errors
+        if (error?.response?.status === 429) {
+          return failureCount < 2;
+        }
+        return false;
+      },
+      retryDelay: (attemptIndex, error) => {
+        if (error?.response?.status === 429) {
+          return Math.min(3000 * 2 ** attemptIndex, 10000); // 3s, 6s, max 10s
+        }
+        return 1000;
+      },
     },
   },
 });
@@ -189,6 +225,89 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
+              <Route 
+                path="departments-manager" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <DepartmentManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="academic-calendar-manager" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AcademicCalendarManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="session-manager" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <SessionManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="elective-manager" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <ElectiveManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="conflict-detection" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <ConflictDetection />
+                  </ProtectedRoute>
+                } 
+              />
+              
+              {/* Phase 2 - Core Features */}
+              <Route 
+                path="analytics-dashboard" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AnalyticsDashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="lab-group-manager" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <LabGroupManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="user-manager" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <UserManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="template-manager" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <TemplateManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="room-vacancy-analysis" 
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <RoomVacancyAnalysis />
+                  </ProtectedRoute>
+                } 
+              />
+              
               <Route 
                 path="excel-demo-admin" 
                 element={

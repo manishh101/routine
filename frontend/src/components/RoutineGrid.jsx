@@ -26,10 +26,20 @@ import ExcelActions from './ExcelActions';
 import TeacherExcelActions from './TeacherExcelActions';
 import { routinesAPI, timeSlotsAPI } from '../services/api';
 import { handleRoutineChangeCache } from '../utils/teacherScheduleCache';
+import * as timeSlotUtils from '../utils/timeSlotUtils';
 import './RoutineGrid.css';
 
-const { Text } = Typography;
+// Extract the utility functions we need
+const { 
+  normalizeTimeSlotId, 
+  findTimeSlotById, 
+  createRoutineGrid, 
+  populateRoutineGrid, 
+  getClassData,
+  getTimeSlotPositionIndex 
+} = timeSlotUtils;
 
+const { Text } = Typography;
 // Demo data function for demonstration purposes
 const getDemoRoutineData = (programCode, semester, section) => {
   return {
@@ -82,50 +92,42 @@ const getDemoTimeSlots = () => {
     data: {
       data: [
         {
-          _id: '0',
-          label: 'Period 1',
-          startTime: '7:30',
-          endTime: '8:15',
-          sortOrder: 0,
-          isBreak: false
-        },
-        {
           _id: '1',
-          label: 'Period 2',
-          startTime: '8:15',
-          endTime: '9:00',
+          label: '10:15-11:05',
+          startTime: '10:15',
+          endTime: '11:05',
           sortOrder: 1,
           isBreak: false
         },
         {
           _id: '2',
-          label: 'Break',
-          startTime: '9:00',
-          endTime: '9:15',
+          label: '11:05-11:55',
+          startTime: '11:05',
+          endTime: '11:55',
           sortOrder: 2,
-          isBreak: true
+          isBreak: false
         },
         {
           _id: '3',
-          label: 'Period 3',
-          startTime: '9:15',
-          endTime: '10:00',
+          label: '11:55-12:45',
+          startTime: '11:55',
+          endTime: '12:45',
           sortOrder: 3,
           isBreak: false
         },
         {
           _id: '4',
-          label: 'Period 4',
-          startTime: '10:00',
-          endTime: '10:45',
+          label: '12:45-13:35',
+          startTime: '12:45',
+          endTime: '13:35',
           sortOrder: 4,
           isBreak: false
         },
         {
           _id: '5',
-          label: 'Period 5',
-          startTime: '10:45',
-          endTime: '11:30',
+          label: '13:35-14:25',
+          startTime: '13:35',
+          endTime: '14:25',
           sortOrder: 5,
           isBreak: false
         }
@@ -167,22 +169,43 @@ const RoutineGrid = ({
   const queryClient = useQueryClient();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
+  // Force refresh when selection changes
+  useEffect(() => {
+    if (programCode && semester && section && !demoMode && !teacherViewMode) {
+      queryClient.invalidateQueries(['routine', programCode, semester, section]);
+    }
+  }, [programCode, semester, section, queryClient, demoMode, teacherViewMode]);
+
   // Fetch routine data (use demo data if in demo mode)
   const { 
     data: fetchedRoutineData, 
     isLoading: routineLoading,
     error: routineError,
     dataUpdatedAt,
-    isRefetching 
+    isRefetching,
+    refetch: refetchRoutine
   } = useQuery({
     queryKey: ['routine', programCode, semester, section],
     queryFn: async () => {
-      console.log('RoutineGrid - Fetching routine data for:', { programCode, semester, section });
       if (demoMode) {
         return getDemoRoutineData(programCode, semester, section);
       } else {
         const response = await routinesAPI.getRoutine(programCode, semester, section);
-        console.log('RoutineGrid - API response:', response.data);
+        
+        // DEBUG: Log the API response to see multi-group data
+        console.log('🔍 API Response from getRoutine:', response);
+        if (response.data?.data?.routine) {
+          console.log('🔍 Routine data structure:', response.data.data.routine);
+          // Check specifically for multi-group slots
+          Object.keys(response.data.data.routine).forEach(dayIndex => {
+            Object.keys(response.data.data.routine[dayIndex] || {}).forEach(slotIndex => {
+              const slotData = response.data.data.routine[dayIndex][slotIndex];
+              if (Array.isArray(slotData)) {
+                console.log(`🎯 FOUND MULTI-GROUP SLOT: Day ${dayIndex}, Slot ${slotIndex}:`, slotData);
+              }
+            });
+          });
+        }
         
         // Ensure consistent data structure
         if (response.data?.data) {
@@ -221,6 +244,90 @@ const RoutineGrid = ({
     staleTime: 5 * 60 * 1000
   });
 
+  // Helper function to group lab classes by time slot
+  const groupLabClassesBySlot = (routineData) => {
+    console.log('🔍 groupLabClassesBySlot input:', routineData);
+    const groupedRoutine = {};
+    
+    // Process each day
+    Object.keys(routineData).forEach(dayIndex => {
+      groupedRoutine[dayIndex] = {};
+      const dayData = routineData[dayIndex];
+      
+      if (!dayData || typeof dayData !== 'object') return;
+      
+      // Process each slot
+      Object.keys(dayData).forEach(slotIndex => {
+        const slotData = dayData[slotIndex];
+        if (!slotData) return;
+        
+        console.log(`🔍 Processing slot Day ${dayIndex}, Slot ${slotIndex}:`, slotData);
+        
+        // Check if this is already an array (multiple groups from backend)
+        if (Array.isArray(slotData)) {
+          console.log(`🎯 FOUND ARRAY! Day ${dayIndex}, Slot ${slotIndex} has ${slotData.length} items:`, slotData);
+          
+          // Sort by labGroup to ensure consistent order (A first, then B)
+          const sortedClasses = slotData.sort((a, b) => {
+            if (a.labGroup === 'A' && b.labGroup === 'B') return -1;
+            if (a.labGroup === 'B' && b.labGroup === 'A') return 1;
+            return 0;
+          });
+          
+          // Create a combined class object for display
+          groupedRoutine[dayIndex][slotIndex] = {
+            ...sortedClasses[0], // Use first class as base
+            isMultiGroup: true,
+            groups: sortedClasses,
+            multiGroupDisplay: true
+          };
+          
+          console.log(`🎯 Created multi-group object:`, groupedRoutine[dayIndex][slotIndex]);
+        } else if (slotData.alternateWeeks && slotData.alternateGroupData) {
+          // Handle alternate weeks lab - create display for both groups
+          console.log(`🔄 FOUND ALTERNATE WEEKS! Day ${dayIndex}, Slot ${slotIndex}:`, slotData);
+          
+          const groupAData = {
+            ...slotData,
+            labGroup: 'A',
+            alternateWeeksDisplay: 'Week A'
+          };
+          
+          const groupBData = {
+            ...slotData,
+            labGroup: 'B', 
+            alternateWeeksDisplay: 'Week B'
+          };
+          
+          // Apply alternate group configuration if available
+          if (slotData.alternateGroupData.groupA) {
+            Object.assign(groupAData, slotData.alternateGroupData.groupA);
+          }
+          if (slotData.alternateGroupData.groupB) {
+            Object.assign(groupBData, slotData.alternateGroupData.groupB);
+          }
+          
+          groupedRoutine[dayIndex][slotIndex] = {
+            ...slotData,
+            isAlternateWeeks: true,
+            isMultiGroup: true, // Use same display logic as multi-group
+            groups: [groupAData, groupBData],
+            multiGroupDisplay: true,
+            alternateWeeksDisplay: true
+          };
+          
+          console.log(`🔄 Created alternate weeks object:`, groupedRoutine[dayIndex][slotIndex]);
+        } else {
+          // Single class - use as is
+          groupedRoutine[dayIndex][slotIndex] = slotData;
+        }
+      });
+    });
+    
+    console.log('🔍 groupLabClassesBySlot output:', groupedRoutine);
+    return groupedRoutine;
+  };
+
   // Memoized data processing for performance
   const routine = useMemo(() => {
     // Handle both direct routine data and nested data structures
@@ -240,99 +347,72 @@ const RoutineGrid = ({
       result = {};
     }
     
-    console.log('RoutineGrid - Processing routine data:', {
-      rawRoutineData: routineData,
-      processedRoutine: result,
-      hasData: Object.keys(result).length > 0,
-      dataUpdatedAt,
-      isRefetching,
-      programCode,
-      semester,
-      section,
-      slotCount: Object.values(result).reduce((total, day) => total + Object.keys(day || {}).length, 0),
-      dataStructureType: routineData?.routine ? 'routine' : 
-                         routineData?.data?.routine ? 'data.routine' :
-                         routineData?.data ? 'data' : 'unknown'
-    });
+    // Group lab classes by slot to handle bothGroups display
+    result = groupLabClassesBySlot(result);
+    
     return result;
-  }, [routineData, programCode, semester, section, dataUpdatedAt, isRefetching]);
+  }, [routineData, demoMode, teacherViewMode]);
 
   const timeSlots = useMemo(() => {
-    return (timeSlotsData?.data?.data || []).sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [timeSlotsData]);
-
-  // Transform routine data into 2D grid structure for easier rendering
-  const routineGridData = useMemo(() => {
-    // Detailed debug to see exactly what data we're working with
-    console.log('RoutineGrid - Creating grid with data:', {
-      hasRoutine: !!routine,
-      routineType: typeof routine,
-      routineIsEmpty: routine && Object.keys(routine).length === 0,
-      timeSlotsCount: timeSlots.length,
-      teacherViewMode
-    });
+    // The API returns time slots directly as an array
+    let slots = [];
     
-    if (routine) {
-      console.log('Routine days available:', Object.keys(routine));
-      
-      // Check a sample day if available
-      const sampleDay = Object.keys(routine)[0];
-      if (sampleDay) {
-        console.log(`Sample day ${sampleDay} data:`, routine[sampleDay]);
+    if (demoMode) {
+      // For demo mode, extract from nested structure
+      if (timeSlotsData?.data?.data && Array.isArray(timeSlotsData.data.data)) {
+        slots = timeSlotsData.data.data;
+      }
+    } else {
+      // For real API, handle axios response structure
+      if (Array.isArray(timeSlotsData)) {
+        // Direct array response (shouldn't happen with axios)
+        slots = timeSlotsData;
+      } else if (timeSlotsData?.data && Array.isArray(timeSlotsData.data)) {
+        // Axios wraps response in .data property
+        slots = timeSlotsData.data;
       }
     }
     
-    if (!routine || !timeSlots.length) {
-      console.log('Cannot create grid: missing routine or timeSlots');
-      return {};
-    }
-
-    const grid = {};
-    dayNames.forEach((dayName, dayIndex) => {
-      grid[dayIndex] = {};
-      timeSlots.forEach(slot => {
-        // Ensure consistent string keys
-        grid[dayIndex][slot._id.toString()] = null;
-      });
+    console.log('RoutineGrid - Processing time slots:', {
+      demoMode,
+      rawTimeSlotsData: timeSlotsData,
+      processedSlots: slots,
+      slotCount: slots.length,
+      allSlots: slots.map(slot => ({
+        _id: slot._id,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        label: slot.label
+      }))
     });
-
-    // Log grid structure after initialization
-    console.log('Grid structure initialized with days:', Object.keys(grid));
     
-    try {
-      // Populate grid with scheduled classes
-      Object.keys(routine).forEach(dayIndex => {
-        console.log(`Processing day ${dayIndex} slots...`);
-        
-        const dayData = routine[dayIndex];
-        if (!dayData || typeof dayData !== 'object') {
-          console.log(`No valid data for day ${dayIndex}`);
-          return; // Skip this day
-        }
-        
-        Object.keys(dayData).forEach(slotIndex => {
-          const classData = dayData[slotIndex];
-          // Convert slotIndex to string for proper comparison since object keys are always strings
-          const slotKey = slotIndex.toString();
-          
-          console.log(`Processing slot ${slotKey} for day ${dayIndex}:`, classData);
-          
-          if (classData && grid[dayIndex] && grid[dayIndex].hasOwnProperty(slotKey)) {
-            console.log(`Adding class to grid[${dayIndex}][${slotKey}]`);
-            grid[dayIndex][slotKey] = classData;
-          } else {
-            console.log(`Cannot add class to grid[${dayIndex}][${slotKey}] - invalid slot`);
-          }
-        });
-      });
-    } catch (error) {
-      console.error('Error creating routine grid:', error);
+    // Make sure all time slots are properly sorted
+    const sortedSlots = slots.sort((a, b) => a.sortOrder - b.sortOrder);
+    
+    console.log('Time slots after sorting:', sortedSlots.map(slot => ({
+      _id: slot._id, 
+      startTime: slot.startTime, 
+      endTime: slot.endTime,
+      sortOrder: slot.sortOrder
+    })));
+    
+    return sortedSlots;
+  }, [timeSlotsData, demoMode]);
+
+  // Transform routine data into 2D grid structure for easier rendering
+  const routineGridData = useMemo(() => {
+    if (demoMode) {
+      return routine;
     }
     
-    // Log final grid for verification
-    console.log('Final grid structure created:', grid);
-    return grid;
-  }, [routine, timeSlots, teacherViewMode]);
+    // Create empty grid structure with normalized time slot IDs
+    const emptyGrid = createRoutineGrid(timeSlots);
+    
+    // Populate grid with actual routine data
+    const populatedGrid = populateRoutineGrid(emptyGrid, routine);
+    
+    return populatedGrid;
+  }, [routine, timeSlots, demoMode]);
 
   // Helper functions
   const getClassTypeColor = (classType) => {
@@ -362,10 +442,15 @@ const RoutineGrid = ({
     }
   };
 
-  const calculateRowSpan = (classData, dayData, slotIndex) => {
+  const calculateColSpan = (classData, dayData, slotIndex) => {
+    // If not part of a span group, return 1 (normal cell)
     if (!classData?.spanId) return 1;
-    if (classData.spanId && !classData.spanMaster) return 0;
     
+    // If it's part of a span group but not the master, 
+    // return 1 but we'll style it differently
+    if (classData.spanId && !classData.spanMaster) return 1;
+    
+    // For the span master, calculate the total span length
     const spanGroup = Object.values(dayData || {}).filter(
       slot => slot?.spanId && slot.spanId === classData.spanId
     );
@@ -426,7 +511,7 @@ const RoutineGrid = ({
       routinesAPI.clearClass(programCode, semester, section, { dayIndex, slotIndex }),
     onSuccess: async (result, variables) => {
       const { dayIndex, slotIndex } = variables;
-      const timeSlot = timeSlots.find(ts => ts._id === slotIndex);
+      const timeSlot = findTimeSlotById(timeSlots, slotIndex);
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       
       // Show undo option
@@ -445,12 +530,16 @@ const RoutineGrid = ({
       // Use enhanced cache management for teacher schedule synchronization
       await handleRoutineChangeCache(queryClient, result);
       
-      // Invalidate routine queries
+      // Force immediate refetch of routine data
+      console.log('🔄 Forcing routine data refetch after clearing class...');
+      await refetchRoutine();
+      
+      // Invalidate routine queries for comprehensive updates
       queryClient.invalidateQueries(['routine', programCode, semester, section]);
     },
     onError: (error, variables) => {
       const { dayIndex, slotIndex } = variables;
-      const timeSlot = timeSlots.find(ts => ts._id === slotIndex);
+      const timeSlot = findTimeSlotById(timeSlots, slotIndex);
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       
       console.error('Clear class error:', error);
@@ -490,8 +579,13 @@ const RoutineGrid = ({
       // Use enhanced cache management for teacher schedule synchronization
       await handleRoutineChangeCache(queryClient, result);
       
-      // Invalidate routine queries
+      // Force immediate refetch of routine data
+      console.log('🔄 Forcing routine data refetch after clearing multi-period class...');
+      await refetchRoutine();
+      
+      // Invalidate routine queries for comprehensive updates
       queryClient.invalidateQueries(['routine', programCode, semester, section]);
+      queryClient.refetchQueries(['routine', programCode, semester, section]);
     },
     onError: (error, spanId) => {
       console.error('Clear span group error:', error);
@@ -509,25 +603,25 @@ const RoutineGrid = ({
     }
   });
 
-
-
-
-
-
-
-
-
   const handleSlotClick = (dayIndex, slotIndex) => {
     if (!isEditable || demoMode) return;
     
-    const timeSlot = timeSlots.find(ts => ts._id === slotIndex);
+    // Normalize the slot ID for consistent handling
+    const normalizedSlotId = normalizeTimeSlotId(slotIndex);
+    
+    // Find the time slot using the utility function
+    const timeSlot = findTimeSlotById(timeSlots, normalizedSlotId);
+    
     if (timeSlot?.isBreak) {
-      safeMessage.info('Cannot assign classes during break time');
-      return;
+      // For break time slots, we can assign BREAK class types but not regular classes
+      // Let the modal handle this validation
     }
 
-    setSelectedSlot({ dayIndex, slotIndex });
-    const existingClassData = routine[dayIndex]?.[slotIndex];
+    // Set selected slot with normalized ID
+    setSelectedSlot({ dayIndex, slotIndex: normalizedSlotId });
+    
+    // Get existing class data using the utility function
+    const existingClassData = getClassData(routineGridData, dayIndex, normalizedSlotId);
     setExistingClass(existingClassData || null);
     setAssignModalVisible(true);
   };
@@ -574,8 +668,11 @@ const RoutineGrid = ({
   };
 
   const handleClearClass = (dayIndex, slotIndex) => {
-    const classData = routineGridData[dayIndex]?.[slotIndex];
-    const timeSlot = timeSlots.find(ts => ts._id === slotIndex);
+    // Normalize slot ID for consistent handling
+    const normalizedSlotId = normalizeTimeSlotId(slotIndex);
+    const classData = getClassData(routineGridData, dayIndex, normalizedSlotId);
+    // Find time slot using utility function
+    const timeSlot = findTimeSlotById(timeSlots, normalizedSlotId);
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     
     if (!classData) {
@@ -606,6 +703,31 @@ const RoutineGrid = ({
           handleClearEntireRoutine();
         }
       });
+      return;
+    }
+    
+    // When called from modal, clear class directly without confirmation
+    if (assignModalVisible) {
+      // Store the class data for potential undo
+      setLastDeletedClass({
+        classData,
+        dayIndex,
+        slotIndex,
+        type: classData.spanId ? 'span' : 'single'
+      });
+      
+      if (classData.spanId) {
+        clearSpanGroupMutation.mutate(classData.spanId, {
+          onSuccess: () => onModalClose() // Close modal after successful deletion
+        });
+      } else {
+        clearClassMutation.mutate({ 
+          dayIndex, 
+          slotIndex: parseInt(normalizedSlotId) || normalizedSlotId // Ensure integer for backend
+        }, {
+          onSuccess: () => onModalClose() // Close modal after successful deletion
+        });
+      }
       return;
     }
     
@@ -708,7 +830,10 @@ const RoutineGrid = ({
             type: 'single'
           });
           
-          clearClassMutation.mutate({ dayIndex, slotIndex });
+          clearClassMutation.mutate({ 
+            dayIndex, 
+            slotIndex: parseInt(normalizedSlotId) || normalizedSlotId // Ensure integer for backend
+          });
         }
       });
     }
@@ -747,7 +872,7 @@ const RoutineGrid = ({
       setShowUndoButton(false);
     } catch (error) {
       console.error('Undo error:', error);
-      message.error('Failed to restore class. Please recreate it manually.');
+      safeMessage.error('Failed to restore class. Please recreate it manually.');
     }
   };
 
@@ -760,75 +885,197 @@ const RoutineGrid = ({
   // Render class cell content
   const renderClassContent = (classData) => {
     if (!classData) {
-      // Add debug info
-      console.log('No class data to render in RoutineGrid');
-      return <Text type="secondary" style={{ fontSize: '11px' }}>-</Text>;
+      return null;
     }
-    
-    // Debug log to see what class data we have
-    console.log('Rendering class cell with data:', {
-      subjectName: classData.subjectName,
-      roomName: classData.roomName,
-      teacherNames: classData.teacherNames,
-      programInfo: classData.programSemesterSection
-    });
 
     const classCellContentStyle = {
       fontSize: '12px',
-      lineHeight: '1.3'
+      lineHeight: '1.3',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      textAlign: 'center',
+      color: '#333',
+      padding: '4px'
     };
 
     const isSpanned = isPartOfSpanGroup(classData);
     const isSpanMaster = classData.spanMaster === true;
     
-    return (
-      <div style={classCellContentStyle}>
-        <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#1677ff' }}>
-          {classData.subjectName || classData.subjectCode}
-          {isSpanned && isSpanMaster && (
-            <Tag color="blue" size="small" style={{ marginLeft: '4px', fontSize: '9px' }}>
-              Multi-period
-            </Tag>
-          )}
-          {teacherViewMode && classData.timeSlot_display && (
-            <div style={{ fontSize: '10px', color: '#666', fontWeight: 'normal' }}>
-               {classData.timeSlot_display}
+    // Check if this is a multi-group slot (Group A and Group B)
+    if (classData.isMultiGroup && classData.groups && classData.groups.length > 1) {
+      return (
+        <div style={classCellContentStyle}>
+          {/* Alternate weeks indicator */}
+          {classData.isAlternateWeeks && (
+            <div style={{
+              position: 'absolute',
+              top: '2px',
+              right: '2px',
+              fontSize: '8px',
+              padding: '2px 4px',
+              background: '#722ed1',
+              color: '#fff',
+              borderRadius: '4px',
+              zIndex: 5,
+            }}>
+              Alt Week
             </div>
           )}
+          {classData.groups.map((group, index) => (
+            <div key={index}>
+              {/* Group content */}
+              <div style={{
+                padding: '6px 4px',
+                borderBottom: index < classData.groups.length - 1 ? '2px solid #1890ff' : 'none',
+                marginBottom: index < classData.groups.length - 1 ? '6px' : '0',
+                backgroundColor: group.labGroup === 'A' ? 'rgba(240, 248, 255, 0.5)' : 'rgba(240, 255, 240, 0.5)',
+                borderRadius: '4px'
+              }}>
+                {/* Subject Name with Group indicator */}
+                <div style={{ 
+                  fontWeight: '600', 
+                  marginBottom: '2px',
+                  fontSize: '12px',
+                  color: group.labGroup === 'A' ? '#1890ff' : '#52c41a'
+                }}>
+                  {group.subjectName || group.subjectCode}
+                  <span style={{ 
+                    fontSize: '10px', 
+                    marginLeft: '4px',
+                    fontWeight: 'normal',
+                    opacity: 0.8
+                  }}>
+                    {classData.isAlternateWeeks ? 
+                      `(Grp ${group.labGroup})` : 
+                      `(Group ${group.labGroup})`
+                    }
+                  </span>
+                </div>
+                
+                {/* Class Type */}
+                <div style={{ 
+                  fontSize: '10px',
+                  color: '#666',
+                  marginBottom: '1px'
+                }}>
+                  [{getClassTypeText(group.classType)}]
+                </div>
+                
+                {/* Teacher */}
+                {!teacherViewMode && (
+                  <div style={{ 
+                    fontSize: '10px',
+                    color: '#666',
+                    marginBottom: '1px'
+                  }}>
+                    {Array.isArray(group.teacherShortNames) 
+                      ? group.teacherShortNames.join(', ')
+                      : group.teacherShortNames || 'TBA'}
+                  </div>
+                )}
+                
+                {/* Room */}
+                <div style={{ 
+                  fontSize: '10px',
+                  color: '#666'
+                }}>
+                  {group.roomName || 'TBA'}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-        <div style={{ marginBottom: '2px' }}>
-          <Tag color={getClassTypeColor(classData.classType)} size="small">
-            {getClassTypeText(classData.classType)}
-          </Tag>
+      );
+    }
+    
+    // Single group/class display (original logic)
+    return (
+      <div style={classCellContentStyle}>
+        {/* Alternate weeks indicator for single group */}
+        {classData.alternateWeeks && (
+          <div style={{
+            position: 'absolute',
+            top: '2px',
+            right: '2px',
+            fontSize: '8px',
+            padding: '2px 4px',
+            background: '#722ed1',
+            color: '#fff',
+            borderRadius: '4px',
+            zIndex: 5,
+          }}>
+            Alt Week
+          </div>
+        )}
+        
+        {/* Subject Name with Lab Group indicator */}
+        <div style={{ 
+          fontWeight: '600', 
+          marginBottom: '3px',
+          fontSize: '13px'
+        }}>
+          {classData.subjectName || classData.subjectCode}
+          {/* Show lab group indicator for practical classes */}
+          {classData.classType === 'P' && classData.labGroup && (
+            <span style={{ 
+              fontSize: '10px', 
+              marginLeft: '4px',
+              fontWeight: 'normal',
+              opacity: 0.8,
+              color: classData.labGroup === 'A' ? '#1890ff' : '#52c41a'
+            }}>
+              {classData.alternateWeeks ? 
+                `(Alt Week)` : 
+                classData.labGroup === 'A' ? '(Group A)' :
+                classData.labGroup === 'B' ? '(Group B)' :
+                classData.labGroup === 'bothGroups' ? '(Both Groups)' :
+                `(${classData.labGroup})`
+              }
+            </span>
+          )}
         </div>
+        
+        {/* Class Type */}
+        <div style={{ 
+          fontSize: '11px',
+          color: '#666',
+          marginBottom: '2px'
+        }}>
+          [{getClassTypeText(classData.classType)}]
+        </div>
+        
+        {/* Teacher */}
         {!teacherViewMode && (
-          <div style={{ marginBottom: '2px', fontSize: '11px' }}>
-             {Array.isArray(classData.teacherShortNames) 
+          <div style={{ 
+            fontSize: '11px',
+            color: '#666',
+            marginBottom: '2px'
+          }}>
+            {Array.isArray(classData.teacherShortNames) 
               ? classData.teacherShortNames.join(', ')
-              : classData.teacherShortNames || 'No Teacher'}
+              : classData.teacherShortNames || 'TBA'}
           </div>
         )}
-        <div style={{ fontSize: '11px' }}>
-          {classData.roomName || 'No Room'}
+        
+        {/* Room */}
+        <div style={{ 
+          fontSize: '11px',
+          color: '#666'
+        }}>
+          {classData.roomName || 'TBA'}
         </div>
-        {classData.notes && (
-          <div style={{ marginTop: '4px', fontSize: '10px', color: '#666' }}>
-            {classData.notes}
-          </div>
-        )}
-        {isSpanned && isSpanMaster && classData.spanId && (
-          <div style={{ marginTop: '4px', fontSize: '10px', color: '#1677ff' }}>
-            Multi-period class
-          </div>
-        )}
+        
       </div>
     );
   };
 
   const renderCell = (dayIndex, slotIndex) => {
-    const timeSlot = timeSlots.find(ts => ts._id === slotIndex);
+    const normalizedSlotId = normalizeTimeSlotId(slotIndex);
+    const timeSlot = findTimeSlotById(timeSlots, normalizedSlotId);
     const isBreak = timeSlot?.isBreak;
-    const classData = routineGridData[dayIndex]?.[slotIndex];
+    const classData = getClassData(routineGridData, dayIndex, normalizedSlotId);
 
     if (isBreak) {
       return (
@@ -852,47 +1099,109 @@ const RoutineGrid = ({
 
   const handleSaveClass = async (classData) => {
     try {
-      const fullClassData = {
+      // Check if this is a multi-period class
+      if (classData.isMultiPeriod && classData.slotIndexes && classData.slotIndexes.length > 1) {
+        return await handleSaveSpannedClass(classData, classData.slotIndexes);
+      }
+      
+      // Single-period class assignment - use slot ID directly
+      const slotIndex = selectedSlot.slotIndex;
+      
+      console.log('� Single-period assignment using slot ID:', slotIndex);
+      
+      const requestData = {
         ...classData,
         dayIndex: selectedSlot.dayIndex,
-        slotIndex: selectedSlot.slotIndex
+        slotIndex: parseInt(slotIndex) // Convert to integer for backend
       };
       
-      await routinesAPI.assignClass(programCode, semester, section, fullClassData);
-      message.success('Class assigned successfully!');
+      await routinesAPI.assignClass(programCode, semester, section, requestData);
+      safeMessage.success('Class assigned successfully!');
+      
+      // Refresh data
+      await refetchRoutine();
       queryClient.invalidateQueries(['routine', programCode, semester, section]);
-      queryClient.invalidateQueries(['teacherSchedules']);
+      
       onModalClose();
+      
     } catch (error) {
-      console.error('Assign class error:', error);
-      message.error(error.response?.data?.message || 'Failed to assign class');
+      console.error('❌ Single-period save error:', error);
+      
+      if (error.response?.status === 409) {
+        safeMessage.error('Schedule conflict detected. Please check teacher and room availability.');
+      } else {
+        safeMessage.error(error.message || 'Failed to assign class. Please try again.');
+      }
     }
   };
 
   const handleSaveSpannedClass = async (classData, slotIndexes) => {
     try {
-      const fullClassData = {
+      console.log('🚀 Multi-period save started:', {
+        classData,
+        slotIndexes
+      });
+
+      // Convert slot IDs to integers for backend
+      const validIndices = slotIndexes.map(slotId => {
+        const slotIndex = parseInt(slotId);
+        if (isNaN(slotIndex)) {
+          throw new Error(`Invalid slot ID: ${slotId} - must be a number`);
+        }
+        return slotIndex;
+      });
+
+      console.log('✅ Using slot IDs directly as slot indices:', {
+        original: slotIndexes,
+        converted: validIndices
+      });
+
+      // Prepare data for backend
+      const requestData = {
         ...classData,
         dayIndex: selectedSlot.dayIndex,
-        slotIndexes: slotIndexes,
+        slotIndexes: validIndices,
         programCode,
         semester,
         section
       };
+
+      console.log('📤 Sending to backend:', requestData);
+
+      // Send to backend
+      await routinesAPI.assignClassSpanned(requestData);
       
-      await routinesAPI.assignClassSpanned(fullClassData);
-      message.success(`Class assigned successfully across ${slotIndexes.length} periods!`);
+      safeMessage.success(`Multi-period class assigned successfully across ${validIndices.length} periods!`);
+      
+      // Refresh data
+      await refetchRoutine();
+      
+      // Invalidate cache
       queryClient.invalidateQueries(['routine', programCode, semester, section]);
-      queryClient.invalidateQueries(['teacherSchedules']);
-      onModalClose();
-    } catch (error) {
-      console.error('Assign spanned class error:', error);
       
-      if (error.response?.data?.conflict) {
-        const conflict = error.response.data.conflict;
-        message.error(`Conflict in period ${conflict.slotIndex + 1}: ${conflict.type} conflict`);
+      onModalClose();
+      
+    } catch (error) {
+      console.error('❌ Multi-period save error:', error);
+      
+      if (error.response?.status === 409) {
+        // Handle conflicts
+        const conflict = error.response.data?.conflict;
+        if (conflict) {
+          let message = `Conflict detected in period ${conflict.slotIndex + 1}`;
+          if (conflict.type === 'teacher') {
+            message += `: Teacher ${conflict.teacherName} is already assigned`;
+          } else if (conflict.type === 'room') {
+            message += `: Room ${conflict.roomName} is already occupied`;
+          } else {
+            message += `: ${conflict.type} conflict`;
+          }
+          safeMessage.error(message);
+        } else {
+          safeMessage.error('Schedule conflict detected. Please check teacher and room availability.');
+        }
       } else {
-        message.error(error.response?.data?.message || 'Failed to assign spanned class');
+        safeMessage.error(error.message || 'Failed to assign multi-period class. Please try again.');
       }
     }
   };
@@ -947,17 +1256,7 @@ const RoutineGrid = ({
           display: none;
         }
         
-        .span-marker {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 0; 
-          height: 0;
-          border-left: 16px solid #1677ff;
-          border-top: 16px solid #1677ff;
-          border-right: 16px solid transparent;
-          border-bottom: 16px solid transparent;
-        }
+
       `}</style>
       
       <Card 
@@ -991,17 +1290,17 @@ const RoutineGrid = ({
                 demoMode={demoMode}
                 size="small"
                 onImportSuccess={() => {
-                  message.success('Routine imported successfully!');
+                  safeMessage.success('Routine imported successfully!');
                   queryClient.invalidateQueries(['routine', programCode, semester, section]);
                 }}
                 onImportError={(error) => {
-                  message.error(error?.message || 'Failed to import routine');
+                  safeMessage.error(error?.message || 'Failed to import routine');
                 }}
                 onExportSuccess={() => {
-                  message.success('Routine exported successfully!');
+                  safeMessage.success('Routine exported successfully!');
                 }}
                 onExportError={(error) => {
-                  message.error(error?.message || 'Failed to export routine');
+                  safeMessage.error(error?.message || 'Failed to export routine');
                 }}
               />
             )}
@@ -1030,114 +1329,209 @@ const RoutineGrid = ({
         }
       >
         <div className="routine-grid" style={{ overflowX: 'auto', marginTop: '7px', WebkitOverflowScrolling: 'touch' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+          <table className="routine-grid-table" style={{ 
+            width: '100%', 
+            borderCollapse: 'collapse', 
+            minWidth: '1200px',
+            tableLayout: 'fixed',
+            border: '2px solid #666666',
+            backgroundColor: '#ffffff'
+          }}>
             <thead>
               <tr>
-                <th className="time-slot" style={{ 
-                  padding: '12px 8px', 
-                  border: '1px solid #d9d9d9', 
-                  backgroundColor: '#fafafa',
-                  fontWeight: 'bold',
+                <th className="day-time-header" style={{ 
+                  padding: '12px', 
+                  border: '1px solid #c0c0c0', 
+                  backgroundColor: '#f5f5f5',
+                  fontWeight: '600',
                   textAlign: 'center',
-                  minWidth: '100px'
+                  width: '150px',
+                  minWidth: '150px',
+                  maxWidth: '150px',
+                  fontSize: '13px',
+                  color: '#333',
+                  position: 'sticky',
+                  left: 0,
+                  top: 0,
+                  zIndex: 25,
+                  cursor: 'default', // Explicitly set non-interactive cursor
+                  userSelect: 'none' // Prevent text selection
                 }}>
-                  Day / Time
+                  <div style={{ fontWeight: '600', fontSize: '13px' }}>
+                    Days / Time
+                  </div>
                 </th>
-                {timeSlots.map((timeSlot) => (
+                {timeSlots.map((timeSlot, index) => (
                   <th 
-                    key={timeSlot._id}
-                    className="time-slot" 
+                    key={`header-${timeSlot._id}-${index}`}
+                    className="time-slot-header" 
                     style={{ 
                       padding: '12px 8px', 
-                      border: '1px solid #d9d9d9', 
-                      backgroundColor: timeSlot.isBreak ? '#f0f0f0' : '#fafafa',
-                      fontWeight: 'bold',
+                      border: '1px solid #c0c0c0', 
+                      borderRight: '1px solid #c0c0c0', 
+                      borderBottom: '1px solid #c0c0c0',
+                      backgroundColor: timeSlot.isBreak ? '#f8f8f8' : '#f5f5f5',
+                      fontWeight: '600',
                       textAlign: 'center',
-                      minWidth: '120px'
+                      width: `calc((100% - 150px) / ${timeSlots.length})`,
+                      minWidth: '160px',
+                      fontSize: '12px',
+                      color: '#333',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 15
                     }}
                   >
-                    <div>{timeSlot.label}</div>
-                    {!timeSlot.isBreak && (
-                      <div style={{ fontSize: '11px', color: '#666', fontWeight: 'normal' }}>
-                        {timeSlot.startTime} - {timeSlot.endTime}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      gap: '2px' 
+                    }}>
+                      <div style={{ fontWeight: '600', fontSize: '12px', color: '#333' }}>
+                        {timeSlot.isBreak ? 'BREAK' : `${timeSlot.startTime} - ${timeSlot.endTime}`}
                       </div>
-                    )}
+                      {!timeSlot.isBreak && (
+                        <div style={{ fontSize: '10px', color: '#666' }}>
+                          Period {timeSlot.order || index + 1}
+                        </div>
+                      )}
+                    </div>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {dayNames.map((dayName, dayIndex) => (
-                <tr key={dayIndex}>
-                  <td style={{ 
-                    padding: '12px 8px', 
-                    border: '1px solid #d9d9d9', 
-                    backgroundColor: '#fafafa',
-                    fontWeight: 'bold',
-                    textAlign: 'center',
-                    verticalAlign: 'middle',
-                    minWidth: '100px'
-                  }}>
-                    {dayName}
-                  </td>
-                  {timeSlots.map((timeSlot) => {
-                    const classData = routineGridData[dayIndex]?.[timeSlot._id];
+              {dayNames.map((dayName, dayIndex) => {
+                return (
+                  <tr key={dayIndex} className="day-row">
+                    <td className="day-cell" style={{ 
+                      padding: '12px', 
+                      border: '1px solid #c0c0c0', 
+                      backgroundColor: '#f5f5f5',
+                      fontWeight: '600',
+                      textAlign: 'center',
+                      verticalAlign: 'middle',
+                      width: '150px',
+                      minWidth: '150px',
+                      maxWidth: '150px',
+                      fontSize: '13px',
+                      color: '#333',
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 10,
+                      cursor: 'default', // Explicitly set non-interactive cursor
+                      userSelect: 'none' // Prevent text selection
+                    }}>
+                      <div style={{ fontWeight: '600', fontSize: '13px', color: '#333' }}>
+                        {dayName}
+                      </div>
+                    </td>
+                    {timeSlots.map((timeSlot, timeSlotIndex) => {
+                    // Use centralized utility for consistent ID handling
+                    const slotId = normalizeTimeSlotId(timeSlot._id);
+                    // Get class data using utility function
+                    const classData = getClassData(routineGridData, dayIndex, slotId);
                     
                     if (timeSlot.isBreak) {
                       return (
-                        <td key={`${dayIndex}-${timeSlot._id}`} className="class-cell" style={{
+                        <td key={`${dayIndex}-${timeSlot._id}-${timeSlotIndex}`} className="break-cell" style={{
                           padding: '8px',
-                          border: '1px solid #d9d9d9',
-                          backgroundColor: '#f5f5f5',
+                          border: '1px solid #c0c0c0',
+                          borderRight: '1px solid #c0c0c0',
+                          borderBottom: '1px solid #c0c0c0',
+                          backgroundColor: '#f8f8f8',
                           textAlign: 'center',
                           fontStyle: 'italic',
                           color: '#666',
                           height: '80px',
-                          minWidth: '120px',
-                          verticalAlign: 'middle'
+                          minWidth: '160px',
+                          verticalAlign: 'middle',
+                          fontSize: '12px'
                         }}>
                           BREAK
                         </td>
                       );
                     }
 
-                    const rowSpan = calculateRowSpan(classData, routineGridData[dayIndex], timeSlot._id);
+                    // CRITICAL FIX: Use normalized slotId consistently throughout
+                    const isSpanMaster = classData?.spanMaster === true;
+                    const isPartOfSpan = classData?.spanId != null;
                     
-                    if (rowSpan === 0) {
+                    // Only calculate colspan for the span master
+                    const colSpan = isSpanMaster ? 
+                      calculateColSpan(classData, routineGridData[dayIndex], slotId) : 1;
+                    
+                    // Check if this cell should be hidden because it's covered by a previous span master
+                    // We need to check all previous slots in the same day to see if any span master covers this slot
+                    let isHiddenBySpan = false;
+                    if (isPartOfSpan && !isSpanMaster) {
+                      // Check if there's a span master that covers this cell
+                      const spanMasterId = classData.spanId;
+                      // Find the span master for this span group
+                      const spanMaster = Object.values(routineGridData[dayIndex] || {}).find(
+                        cell => cell?.spanId === spanMasterId && cell?.spanMaster === true
+                      );
+                      
+                      if (spanMaster) {
+                        isHiddenBySpan = true;
+                      }
+                    }
+                    
+                    if (isHiddenBySpan) {
                       return null;
                     }
                     
-                    const isSpanMaster = classData?.spanMaster === true;
-                    
                     return (
                       <td 
-                        key={`${dayIndex}-${timeSlot._id}`} 
+                        key={`${dayIndex}-${timeSlot._id}-${timeSlotIndex}`} 
+                        className={`routine-cell ${classData ? 'has-content' : 'empty-content'} ${isSpanMaster ? 'span-master' : ''} ${classData?.isMultiGroup ? 'multi-group' : ''} ${classData?.isAlternateWeeks ? 'alternate-weeks' : ''}`}
                         style={{ 
                           padding: '0', 
-                          border: '1px solid #d9d9d9',
+                          border: '1px solid #c0c0c0',
                           verticalAlign: 'top',
-                          backgroundColor: classData ? getCellBackgroundColor(classData.classType) : '#ffffff',
-                          height: '80px',
-                          minWidth: '120px',
+                          backgroundColor: classData ? '#ffffff' : '#ffffff',
+                          height: classData?.isMultiGroup ? '120px' : '80px', // Taller for multi-group slots
+                          minWidth: '160px',
                           cursor: isEditable && !demoMode && !teacherViewMode ? 'pointer' : 'default',
+                          position: 'relative',
+                          // Ensure all cells have consistent borders regardless of content
+                          borderRight: '1px solid #c0c0c0',
+                          borderBottom: '1px solid #c0c0c0',
                           ...(isSpanMaster ? { 
-                            boxShadow: '0 0 0 2px #1677ff',
-                            position: 'relative',
-                            zIndex: 1
+                            backgroundColor: '#ffffff',
+                            border: colSpan > 1 ? '2px solid #1890ff' : '1px solid #c0c0c0'
                           } : {})
                         }}
-                        rowSpan={rowSpan > 1 ? rowSpan : undefined}
-                        onClick={() => isEditable && !demoMode && !teacherViewMode && handleSlotClick(dayIndex, timeSlot._id)}
+                        colSpan={colSpan > 1 ? colSpan : undefined}
+                        onClick={() => {
+                          if (isEditable && !demoMode && !teacherViewMode) {
+                            // Use already normalized slotId consistently
+                            handleSlotClick(dayIndex, slotId);
+                          }
+                        }}
                         onDoubleClick={!teacherViewMode && onCellDoubleClicked ? 
-                          () => onCellDoubleClicked(dayIndex, timeSlot._id, classData) : 
+                          () => onCellDoubleClicked(dayIndex, slotId, classData) : 
                           undefined}
                       >
-                        <div style={{ padding: '8px', height: '100%' }}>
-                          {isSpanMaster && rowSpan > 1 && (
-                            <div className="span-marker" title={`Multi-period class (spans ${rowSpan} periods)`}></div>
+                        <div style={{ padding: '10px', height: '100%', position: 'relative' }}>
+                          {/* Visual indicator for multi-period classes */}
+                          {isSpanMaster && colSpan > 1 && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '2px',
+                              left: '2px',
+                              fontSize: '9px',
+                              padding: '2px 4px',
+                              background: '#1890ff',
+                              color: '#fff',
+                              borderRadius: '4px',
+                              zIndex: 5,
+                            }}>
+                              {colSpan} periods
+                            </div>
                           )}
                           {renderClassContent(classData)}
-                          {/* Delete icon removed */}
                           {/* Show program-semester-section in teacher view mode */}
                           {teacherViewMode && classData && classData.programSemesterSection && (
                             <div style={{ 
@@ -1150,26 +1544,64 @@ const RoutineGrid = ({
                               {classData.programSemesterSection}
                             </div>
                           )}
-                          {isEditable && !demoMode && !teacherViewMode && !classData && (
-                            <div style={{ 
-                              height: '100%', 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'center',
-                              color: '#bfbfbf'
-                            }}>
-                              <div style={{ textAlign: 'center' }}>
-                                <PlusOutlined style={{ fontSize: '16px', marginBottom: '4px' }} />
-                                <div style={{ fontSize: '11px' }}>Add Class</div>
+                          {(() => {
+                            // Enhanced debug logging for troubleshooting
+                            const slotLabel = timeSlot.label;
+                            const slotTime = `${timeSlot.startTime}-${timeSlot.endTime}`;
+                            
+                            // Debug logging for problematic slots
+                            if (slotTime === '16:05-16:55' || slotTime === '15:15-16:05') {
+                              console.log(`Add Class Debug for ${slotTime} (Day ${dayIndex}):`, {
+                                isEditable,
+                                demoMode,
+                                teacherViewMode,
+                                hasClassData: !!classData,
+                                isBreak: !!timeSlot.isBreak,
+                                normalizedSlotId: slotId,
+                                originalTimeSlotId: timeSlot._id,
+                                timeSlotIdType: typeof timeSlot._id,
+                                normalizedType: typeof slotId,
+                                shouldShowAddClass: isEditable && !demoMode && !teacherViewMode && !classData && !timeSlot.isBreak
+                              });
+                            }
+                            
+                            // Fixed: Use consistent slot ID and ensure proper conditions
+                            return isEditable && !demoMode && !teacherViewMode && !classData && !timeSlot.isBreak && (
+                              <div style={{ 
+                                height: '100%', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                color: '#bfbfbf',
+                                fontSize: '12px'
+                              }}>
+                                <div style={{ 
+                                  textAlign: 'center',
+                                  padding: '8px',
+                                  border: '2px dashed #e6e6e6',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#fafafa',
+                                  transition: 'all 0.2s ease'
+                                }}>
+                                  <PlusOutlined style={{ fontSize: '14px', marginBottom: '4px' }} />
+                                  <div style={{ fontSize: '10px' }}>Add Class</div>
+                                  <div style={{ fontSize: '9px', marginTop: '2px', color: '#aaa' }}>
+                                    {slotTime}
+                                  </div>
+                                  <div style={{ fontSize: '8px', marginTop: '1px', color: '#ccc' }}>
+                                    Slot ID: {slotId}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       </td>
                     );
                   })}
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>
@@ -1208,6 +1640,7 @@ const RoutineGrid = ({
           visible={assignModalVisible}
           onCancel={onModalClose}
           onSave={handleSaveClass}
+          onClear={handleClearClass}
           programCode={programCode}
           semester={semester}
           section={section}

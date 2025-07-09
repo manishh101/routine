@@ -69,25 +69,36 @@ const Dashboard = () => {
   const teachersQuery = useQuery({ 
     queryKey: ['teachers_dashboard'], 
     queryFn: fetchTeachers,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
     refetchOnMount: false,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000)
   });
   
   const programsQuery = useQuery({ 
     queryKey: ['programs_dashboard'], 
     queryFn: fetchPrograms,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
     refetchOnMount: false,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    enabled: teachersQuery.isSuccess || teachersQuery.isError // Wait for teachers to finish
   });
   
   const subjectsQuery = useQuery({ 
     queryKey: ['subjects_dashboard'], 
     queryFn: fetchSubjects,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
     refetchOnMount: false,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    enabled: programsQuery.isSuccess || programsQuery.isError // Wait for programs to finish
   });
 
   const teachers = teachersQuery.data || [];

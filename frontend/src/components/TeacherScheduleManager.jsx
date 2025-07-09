@@ -79,19 +79,19 @@ const TeacherScheduleManager = () => {
     // Check for data in both response formats (direct or nested)
     if (!scheduleData) return null;
     
-    // Enhanced debugging to see what we're working with
     console.log('Raw scheduleData received:', scheduleData);
     
+    // The backend now returns data in the exact same format as routine manager
     // Handle potential response structure variations
     let responseData;
     
     // Check various response structures that could be returned
     if (scheduleData.data?.data) {
-      // API might return { data: { data: { ... } } }
+      // API returns { data: { data: { ... } } }
       responseData = scheduleData.data.data;
       console.log('Using scheduleData.data.data structure');
     } else if (scheduleData.data) {
-      // API might return { data: { ... } }
+      // API returns { data: { ... } }
       responseData = scheduleData.data;
       console.log('Using scheduleData.data structure');
     } else {
@@ -108,27 +108,13 @@ const TeacherScheduleManager = () => {
     
     console.log('Response data structure:', responseData);
     
-    // Extract only the fields that routine manager uses
-    // Use optional chaining to safely access possibly nested properties
-    const programCode = responseData.programCode;
-    const semester = responseData.semester;
-    const section = responseData.section;
+    // Since backend now returns data in the exact same format as routine manager,
+    // we can use it directly without transformation
+    const programCode = responseData.programCode || 'TEACHER_VIEW';
+    const semester = responseData.semester || 'ALL';
+    const section = responseData.section || 'ALL';
+    const routine = responseData.routine || {};
     
-    // Ensure routine is properly extracted - this is critical
-    let routine = responseData.routine;
-    
-    // Additional fallbacks to find routine data
-    if (!routine && responseData.data) {
-      routine = responseData.data.routine;
-    }
-    
-    // Create empty object if routine is not found
-    if (!routine || typeof routine !== 'object') {
-      console.warn('No routine object found in response - creating empty routine');
-      routine = {};
-    }
-    
-    // Detailed logging of the routine structure for debugging
     console.log('Extracted routine object:', routine);
     console.log('Routine days:', Object.keys(routine));
     
@@ -140,10 +126,10 @@ const TeacherScheduleManager = () => {
     
     // Return in EXACT same structure as routine manager expects
     return {
-      programCode: programCode || 'TEACHER_VIEW',
-      semester: semester || 'ALL', 
-      section: section || 'ALL',
-      routine: routine
+      programCode,
+      semester, 
+      section,
+      routine
     };
   }, [scheduleData]);
 
@@ -312,10 +298,14 @@ const TeacherScheduleManager = () => {
                     }
                     size="large"
                     disabled={isUsingDemoData}
-                    dropdownStyle={{
-                      borderRadius: '12px',
-                      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
-                      padding: '8px'
+                    styles={{
+                      popup: {
+                        root: {
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+                          padding: '8px'
+                        }
+                      }
                     }}
                     // Custom display for selected value
                     optionLabelProp="label"
@@ -679,11 +669,11 @@ const TeacherScheduleManager = () => {
               boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
               background: 'white'
             }}
-            headStyle={{
-              borderBottom: '1px solid #f0f2f5',
-              padding: '20px 24px'
-            }}
             styles={{
+              header: {
+                borderBottom: '1px solid #f0f2f5',
+                padding: '20px 24px'
+              },
               body: {
                 padding: '4px 8px'
               }
@@ -739,10 +729,12 @@ const TeacherScheduleManager = () => {
               />
             ) : routineData ? (
               // Always show the grid if we have routine data
-              // Log what's happening for debugging
-              console.log('Rendering RoutineGrid with data:', {
+              console.log('✅ Rendering RoutineGrid with teacher schedule data:', {
                 hasRoutineData: !!routineData,
                 hasRoutineProperty: !!(routineData && routineData.routine),
+                dayCount: routineData && routineData.routine ? Object.keys(routineData.routine).length : 0,
+                totalSlots: routineData && routineData.routine ? 
+                  Object.values(routineData.routine).reduce((total, day) => total + Object.keys(day || {}).length, 0) : 0,
                 daysWithClasses: routineData && routineData.routine ? 
                   Object.entries(routineData.routine)
                     .filter(([day, slots]) => slots && typeof slots === 'object' && Object.keys(slots).length > 0)
@@ -756,7 +748,7 @@ const TeacherScheduleManager = () => {
               }}>
                 <RoutineGrid 
                   teacherViewMode={true}
-                  routineData={{ data: routineData }} 
+                  routineData={routineData} 
                   isEditable={false}
                   showExcelActions={true}
                   selectedTeacher={selectedTeacher}
@@ -764,6 +756,7 @@ const TeacherScheduleManager = () => {
                     ...selectedTeacherInfo,
                     name: selectedTeacherInfo?.fullName || selectedTeacherInfo?.name || 'Teacher'
                   }}
+                  onCellDoubleClicked={() => {}} // Read-only for teacher view
                 />
               </div>
             ) : (

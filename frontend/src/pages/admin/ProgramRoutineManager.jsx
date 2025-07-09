@@ -49,23 +49,57 @@ const ProgramRoutineManager = () => {
   // Fetch programs
   const { data: programs, isLoading: programsLoading, error: programsError } = useQuery({
     queryKey: ['programs'],
-    queryFn: () => programsAPI.getPrograms().then(res => res.data),
+    queryFn: async () => {
+      try {
+        const response = await programsAPI.getPrograms();
+        console.log('Programs API response:', response);
+        // Handle both response.data and response.data.data formats
+        return response.data.data || response.data || [];
+      } catch (error) {
+        console.error('Error fetching programs:', error);
+        throw error;
+      }
+    },
+    retry: 2,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   // Enhanced debug logs
   console.log('Programs for dropdown:', programs, '| type:', typeof programs, '| isArray:', Array.isArray(programs), '| error:', programsError);
 
-  // Fetch semesters (based on selected program)
-  const { data: semesters, isLoading: semestersLoading } = useQuery({
-    queryKey: ['program-semesters', selectedProgram],
-    queryFn: () => selectedProgram 
-      ? programSemestersAPI.getCurriculum(selectedProgram).then(res => res.data.data)
-      : Promise.resolve([]),
-    enabled: !!selectedProgram,
-  });
+  // Generate semesters based on selected program
+  const semesters = React.useMemo(() => {
+    console.log('Generating semesters for program:', selectedProgram);
+    console.log('Available programs:', programs);
+    
+    if (!selectedProgram || !programs || !Array.isArray(programs)) {
+      console.log('No program selected or programs not available');
+      return [];
+    }
+    
+    const program = programs.find(p => p.code === selectedProgram);
+    console.log('Found program:', program);
+    
+    if (!program) {
+      console.log('Program not found for code:', selectedProgram);
+      return [];
+    }
+    
+    const totalSemesters = program.totalSemesters || program.semesters || 8; // Try multiple fields, default to 8
+    console.log('Total semesters for program:', totalSemesters);
+    
+    // Generate array of semesters from 1 to totalSemesters
+    const semesterArray = Array.from({ length: totalSemesters }, (_, index) => ({
+      semester: index + 1,
+      semesterName: `Semester ${index + 1}`
+    }));
+    
+    console.log('Generated semester array:', semesterArray);
+    return semesterArray;
+  }, [selectedProgram, programs]);
 
   // Debug log for semesters
-  console.log('Semesters data:', semesters, '| type:', typeof semesters, '| isArray:', Array.isArray(semesters));
+  console.log('Final semesters state:', semesters, '| length:', semesters.length);
 
   // Available sections (hardcoded as per business logic)
   const sections = ['AB', 'CD'];
@@ -160,37 +194,99 @@ const ProgramRoutineManager = () => {
       // Refetch routine data to show updated grid
       await refetchRoutine();
       
-      // Comprehensive cache invalidation to ensure data consistency
+      // COMPREHENSIVE SYSTEM-WIDE CACHE INVALIDATION
+      console.log('🔄 Starting comprehensive cache invalidation...');
+      
       await Promise.all([
-        // Invalidate all teacher schedules
-        queryClient.invalidateQueries(['teacherSchedules']),
-        queryClient.invalidateQueries({ queryKey: ['teacherSchedule'] }),
-        
-        // Invalidate routine-specific queries
+        // 1. ROUTINE-RELATED QUERIES - All program/semester/section combinations
+        queryClient.invalidateQueries(['routine']),
+        queryClient.invalidateQueries(['routines']),
         queryClient.invalidateQueries(['routine', selectedProgram, selectedSemester, selectedSection]),
+        queryClient.invalidateQueries(['routineData']),
+        queryClient.invalidateQueries(['programRoutines']),
         
-        // Invalidate all teacher-specific schedules
+        // 2. TEACHER-RELATED QUERIES - All teacher schedules and availability
+        queryClient.invalidateQueries(['teachers']),
+        queryClient.invalidateQueries(['teacherSchedule']),
+        queryClient.invalidateQueries(['teacherSchedules']),
+        queryClient.invalidateQueries(['teacherAvailability']),
+        queryClient.invalidateQueries(['teacherWorkload']),
+        queryClient.invalidateQueries(['teacherConflicts']),
+        
+        // 3. ROOM-RELATED QUERIES - All room schedules and availability
+        queryClient.invalidateQueries(['rooms']),
+        queryClient.invalidateQueries(['roomSchedule']),
+        queryClient.invalidateQueries(['roomAvailability']),
+        queryClient.invalidateQueries(['roomConflicts']),
+        queryClient.invalidateQueries(['vacantRooms']),
+        
+        // 4. SUBJECT-RELATED QUERIES - Subject assignments and scheduling
+        queryClient.invalidateQueries(['subjects']),
+        queryClient.invalidateQueries(['subjectSchedule']),
+        queryClient.invalidateQueries(['availableSubjects']),
+        
+        // 5. PROGRAM-SPECIFIC QUERIES - All data for the current program
+        queryClient.invalidateQueries(['program', selectedProgram]),
+        queryClient.invalidateQueries(['programSemesters', selectedProgram]),
+        queryClient.invalidateQueries(['programSections', selectedProgram]),
+        
+        // 6. CONFLICT DETECTION QUERIES
+        queryClient.invalidateQueries(['conflicts']),
+        queryClient.invalidateQueries(['scheduleConflicts']),
+        queryClient.invalidateQueries(['timeConflicts']),
+        
+        // 7. ANALYTICS AND REPORTS QUERIES
+        queryClient.invalidateQueries(['analytics']),
+        queryClient.invalidateQueries(['reports']),
+        queryClient.invalidateQueries(['statistics']),
+        queryClient.invalidateQueries(['utilization']),
+        
+        // 8. COMPREHENSIVE PREDICATE-BASED INVALIDATION
+        // This catches any queries we might have missed
         queryClient.invalidateQueries({ 
           predicate: (query) => {
-            return query.queryKey[0] === 'teacherSchedule' || 
-                   query.queryKey[0] === 'teacher';
+            const key = query.queryKey[0];
+            const routineRelatedKeys = [
+              'routine', 'teacher', 'room', 'subject', 'program', 
+              'schedule', 'availability', 'conflict', 'workload',
+              'analytics', 'report', 'statistic', 'utilization'
+            ];
+            
+            return routineRelatedKeys.some(relatedKey => 
+              key && key.toString().toLowerCase().includes(relatedKey)
+            );
           }
         }),
         
-        // Invalidate room availability queries
+        // 9. INVALIDATE ALL QUERIES RELATED TO CURRENT SELECTIONS
         queryClient.invalidateQueries({ 
           predicate: (query) => {
-            return query.queryKey.includes('roomAvailability');
-          }
-        }),
-        
-        // Invalidate teacher availability queries
-        queryClient.invalidateQueries({ 
-          predicate: (query) => {
-            return query.queryKey.includes('teacherAvailability');
+            const queryKey = query.queryKey;
+            return queryKey.includes(selectedProgram) || 
+                   queryKey.includes(selectedSemester) || 
+                   queryKey.includes(selectedSection);
           }
         })
       ]);
+      
+      console.log('✅ Comprehensive cache invalidation completed');
+      
+      // 10. FORCE REFRESH AS ADDITIONAL SAFETY NET
+      forceRefresh();
+      
+      // 11. BROADCAST CHANGE EVENT (for any components listening)
+      if (window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('routineDataChanged', {
+          detail: {
+            programCode: selectedProgram,
+            semester: selectedSemester,
+            section: selectedSection,
+            timestamp: new Date().toISOString()
+          }
+        }));
+      }
+      
+      console.log("🎯 System-wide cache invalidation and refresh completed successfully");
       
       // Force refresh as fallback
       forceRefresh();
@@ -311,16 +407,22 @@ const ProgramRoutineManager = () => {
                     style={{ width: '100%', marginBottom: '12px' }}
                     value={selectedProgram}
                     onChange={(value) => {
+                      console.log('Program selected:', value);
                       setSelectedProgram(value);
                       setSelectedSemester(null);
                       setSelectedSection(null);
                     }}
                     loading={programsLoading}
                     size="large"
-                    dropdownStyle={{
-                      borderRadius: '12px',
-                      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+                    styles={{
+                      popup: {
+                        root: {
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+                        }
+                      }
                     }}
+                    notFoundContent={programsLoading ? "Loading programs..." : "No programs available"}
                   >
                     {(Array.isArray(programs) ? programs : []).map(program => (
                       <Option key={program.code} value={program.code}>
@@ -335,14 +437,15 @@ const ProgramRoutineManager = () => {
                       style={{ width: '100%' }}
                       value={selectedSemester}
                       onChange={(value) => {
+                        console.log('Semester selected:', value);
                         setSelectedSemester(value);
                         setSelectedSection(null);
                       }}
                       disabled={!selectedProgram}
-                      loading={semestersLoading}
                       size="large"
+                      notFoundContent={!selectedProgram ? "Select a program first" : "No semesters available"}
                     >
-                      {Array.isArray(semesters) && semesters.map(semester => (
+                      {semesters.map(semester => (
                         <Option key={semester.semester} value={semester.semester}>
                           Semester {semester.semester}
                         </Option>
@@ -382,6 +485,40 @@ const ProgramRoutineManager = () => {
             </Col>
           </Row>
         </Card>
+        
+        {/* Error Alert for Programs Loading */}
+        {programsError && (
+          <Alert
+            message="Error Loading Programs"
+            description={programsError.response?.data?.message || programsError.message || 'Failed to load programs. Please refresh the page or contact support.'}
+            type="error"
+            showIcon
+            closable
+            style={{ borderRadius: '8px' }}
+            action={
+              <Button size="small" onClick={() => window.location.reload()}>
+                Refresh Page
+              </Button>
+            }
+          />
+        )}
+        
+        {/* Debug Info - Remove in production */}
+        {process.env.NODE_ENV === 'development' && (
+          <Alert
+            message="Debug Information"
+            description={
+              <div>
+                <div><strong>Programs loaded:</strong> {Array.isArray(programs) ? programs.length : 'No'}</div>
+                <div><strong>Selected program:</strong> {selectedProgram || 'None'}</div>
+                <div><strong>Available semesters:</strong> {semesters.length}</div>
+                <div><strong>Programs error:</strong> {programsError ? 'Yes' : 'No'}</div>
+              </div>
+            }
+            type="info"
+            style={{ borderRadius: '8px' }}
+          />
+        )}
         
         {/* Selection Summary Card - Only visible when all selections are made */}
         {selectedProgram && selectedSemester && selectedSection && (
@@ -465,12 +602,14 @@ const ProgramRoutineManager = () => {
                 </div>
               </div>
             }
-            headStyle={{
-              borderBottom: '1px solid #f0f2f5',
-              padding: '20px 24px'
-            }}
-            bodyStyle={{
-              padding: '4px 8px'
+            styles={{
+              header: {
+                borderBottom: '1px solid #f0f2f5',
+                padding: '20px 24px'
+              },
+              body: {
+                padding: '4px 8px'
+              }
             }}
             extra={
               <Space>
@@ -507,12 +646,63 @@ const ProgramRoutineManager = () => {
                     
                     message.success(successMessage, 5);
                     
+                    // COMPREHENSIVE SYSTEM-WIDE CACHE INVALIDATION FOR IMPORT
+                    console.log('🔄 Starting system-wide cache invalidation after import...');
+                    
+                    try {
+                      await Promise.all([
+                        // Same comprehensive invalidation as assignment success
+                        queryClient.invalidateQueries(['routine']),
+                        queryClient.invalidateQueries(['routines']),
+                        queryClient.invalidateQueries(['teachers']),
+                        queryClient.invalidateQueries(['teacherSchedule']),
+                        queryClient.invalidateQueries(['teacherSchedules']),
+                        queryClient.invalidateQueries(['rooms']),
+                        queryClient.invalidateQueries(['roomSchedule']),
+                        queryClient.invalidateQueries(['subjects']),
+                        queryClient.invalidateQueries(['conflicts']),
+                        queryClient.invalidateQueries(['analytics']),
+                        
+                        // Invalidate everything related to current program
+                        queryClient.invalidateQueries({ 
+                          predicate: (query) => {
+                            const queryKey = query.queryKey;
+                            return queryKey.includes(selectedProgram) || 
+                                   queryKey.includes(selectedSemester) || 
+                                   queryKey.includes(selectedSection);
+                          }
+                        })
+                      ]);
+                      
+                      console.log('✅ Import cache invalidation completed');
+                      
+                      // Broadcast change event
+                      if (window.dispatchEvent) {
+                        window.dispatchEvent(new CustomEvent('routineDataChanged', {
+                          detail: {
+                            type: 'import',
+                            programCode: selectedProgram,
+                            semester: selectedSemester,
+                            section: selectedSection,
+                            importedCount,
+                            timestamp: new Date().toISOString()
+                          }
+                        }));
+                      }
+                      
+                      // Force refresh
+                      forceRefresh();
+                      
+                    } catch (error) {
+                      console.error('Error during import cache invalidation:', error);
+                    }
+                    
+                    // Fallback sync with verification
                     const syncSuccess = await syncRoutineData(selectedProgram, selectedSemester, selectedSection, {
                       verifyData: true,
                       enablePageRefreshFallback: true,
                       onVerificationSuccess: (freshData) => {
                         console.log('✅ Import verification successful - data is visible');
-                        forceRefresh();
                       },
                       onVerificationFailed: () => {
                         console.warn('⚠️ Import verification failed - forcing page refresh');
@@ -522,7 +712,6 @@ const ProgramRoutineManager = () => {
                     
                     if (!syncSuccess) {
                       console.warn('Sync failed, falling back to force refresh...');
-                      forceRefresh();
                       setTimeout(() => refetchRoutine(), 500);
                     }
                   }}

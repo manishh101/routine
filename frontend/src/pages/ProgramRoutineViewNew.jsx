@@ -54,25 +54,52 @@ const ProgramRoutineView = ({ teacherId = null }) => {
     error: programsError 
   } = useQuery({
     queryKey: ['programs'],
-    queryFn: () => programsAPI.getPrograms().then(res => res.data),
+    queryFn: async () => {
+      try {
+        const response = await programsAPI.getPrograms();
+        console.log('Programs API response:', response);
+        // Handle both response.data and response.data.data formats
+        return response.data.data || response.data || [];
+      } catch (error) {
+        console.error('Error fetching programs:', error);
+        throw error;
+      }
+    },
     enabled: !teacherMode // Only fetch programs in program view mode
   });
 
   const programs = Array.isArray(programsData) ? programsData : [];
 
-  // Fetch semesters for selected program - Same as Routine Manager
-  const { 
-    data: semestersData, 
-    isLoading: semestersLoading 
-  } = useQuery({
-    queryKey: ['program-semesters', selectedProgram],
-    queryFn: () => selectedProgram 
-      ? programSemestersAPI.getCurriculum(selectedProgram).then(res => res.data.data)
-      : Promise.resolve([]),
-    enabled: !teacherMode && !!selectedProgram
-  });
-
-  const semesters = Array.isArray(semestersData) ? semestersData : [];
+  // Generate semesters based on selected program - Same as Admin Routine Manager
+  const semesters = React.useMemo(() => {
+    console.log('🔍 ProgramRoutineViewNew - Generating semesters for program:', selectedProgram);
+    console.log('🔍 Available programs:', programs);
+    
+    if (!selectedProgram || !programs || !Array.isArray(programs)) {
+      console.log('❌ No program selected or programs not available');
+      return [];
+    }
+    
+    const program = programs.find(p => p.code === selectedProgram);
+    console.log('🔍 Found program:', program);
+    
+    if (!program) {
+      console.log('❌ Program not found for code:', selectedProgram);
+      return [];
+    }
+    
+    const totalSemesters = program.totalSemesters || program.semesters || 8; // Default to 8
+    console.log('🔍 Total semesters for program:', totalSemesters);
+    
+    // Generate array of semesters from 1 to totalSemesters
+    const semesterArray = Array.from({ length: totalSemesters }, (_, index) => ({
+      semester: index + 1,
+      semesterName: `Semester ${index + 1}`
+    }));
+    
+    console.log('✅ Generated semester array:', semesterArray);
+    return semesterArray;
+  }, [selectedProgram, programs]);
 
   // Available sections - Same as Routine Manager
   const sections = ['AB', 'CD'];
@@ -406,9 +433,11 @@ const ProgramRoutineView = ({ teacherId = null }) => {
                 </div>
               </div>
             }
-            headStyle={{
-              borderBottom: '1px solid #f0f2f5',
-              padding: '20px 24px'
+            styles={{
+              header: {
+                borderBottom: '1px solid #f0f2f5',
+                padding: '20px 24px'
+              }
             }}
           >
             {routineLoading ? (
@@ -528,12 +557,13 @@ const ProgramRoutineView = ({ teacherId = null }) => {
                       style={{ width: '100%' }}
                       value={selectedSemester}
                       onChange={(value) => {
+                        console.log('Semester selected:', value);
                         setSelectedSemester(value);
                         setSelectedSection(null);
                       }}
                       disabled={!selectedProgram}
-                      loading={semestersLoading}
                       size="large"
+                      notFoundContent={!selectedProgram ? "Select a program first" : "No semesters available"}
                     >
                       {semesters.map(semester => (
                         <Option key={semester.semester} value={semester.semester}>
@@ -658,9 +688,11 @@ const ProgramRoutineView = ({ teacherId = null }) => {
                 </div>
               </div>
             }
-            headStyle={{
-              borderBottom: '1px solid #f0f2f5',
-              padding: '20px 24px'
+            styles={{
+              header: {
+                borderBottom: '1px solid #f0f2f5',
+                padding: '20px 24px'
+              }
             }}
             extra={
               <Button

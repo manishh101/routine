@@ -6,8 +6,12 @@ const Room = require('../models/Room');
 const TimeSlot = require('../models/TimeSlot');
 const ProgramSemester = require('../models/ProgramSemester');
 const RoutineSlot = require('../models/RoutineSlot');
+const LabGroup = require('../models/LabGroup');
+const ElectiveGroup = require('../models/ElectiveGroup');
+const AcademicCalendar = require('../models/AcademicCalendar');
 const { validationResult } = require('express-validator');
 const { publishToQueue } = require('../services/queue.service');
+const { ConflictDetectionService } = require('../services/conflictDetection');
 const { generateClassRoutineExcel } = require('../utils/excelGeneration');
 const { generateRoutineImportTemplate } = require('../utils/excelTemplate');
 const multer = require('multer');
@@ -42,7 +46,24 @@ const upload = multer({
 // Enhanced validation helper functions
 const validateAssignClassData = async (data) => {
   const errors = [];
-  const { programCode, semester, section, dayIndex, slotIndex, subjectId, teacherIds, roomId, classType } = data;
+  const { programCode, semester, section, dayIndex, slotIndex, subjectId, teacherIds, roomId, classType, labGroup } = data;
+
+  console.log('🔍 Validating assign class data:', {
+    programCode,
+    semester,
+    section, 
+    dayIndex,
+    slotIndex,
+    classType,
+    dataTypes: {
+      programCode: typeof programCode,
+      semester: typeof semester,
+      section: typeof section,
+      dayIndex: typeof dayIndex,
+      slotIndex: typeof slotIndex,
+      classType: typeof classType
+    }
+  });
 
   // Basic data validation
   if (!programCode || typeof programCode !== 'string') {
@@ -65,8 +86,40 @@ const validateAssignClassData = async (data) => {
     errors.push('Slot index must be a non-negative integer');
   }
 
-  if (!classType || !['L', 'P', 'T'].includes(classType)) {
-    errors.push('Class type must be L (Lecture), P (Practical), or T (Tutorial)');
+  if (!classType || !['L', 'P', 'T', 'BREAK'].includes(classType)) {
+    errors.push('Class type must be L (Lecture), P (Practical), T (Tutorial), or BREAK');
+  }
+
+  // Skip detailed validation for breaks
+  if (classType === 'BREAK') {
+    // For breaks, only validate basic program and time slot existence
+    try {
+      console.log('🔍 Validating break - checking program and timeSlot:', { programCode, slotIndex });
+      
+      const [program, timeSlot] = await Promise.all([
+        Program.findOne({ code: programCode.toUpperCase() }),
+        TimeSlot.findOne({ _id: slotIndex })
+      ]);
+
+      console.log('🔍 Break validation results:', {
+        program: program ? { code: program.code, name: program.name } : null,
+        timeSlot: timeSlot ? { _id: timeSlot._id, label: timeSlot.label } : null
+      });
+
+      if (!program) {
+        errors.push(`Program with code ${programCode} not found`);
+      }
+
+      if (!timeSlot) {
+        errors.push(`Time slot with ID ${slotIndex} not found`);
+      }
+    } catch (dbError) {
+      errors.push('Error validating data against database');
+      console.error('Database validation error:', dbError);
+    }
+
+    console.log('🔍 Break validation completed with errors:', errors);
+    return errors;
   }
 
   // Validate IDs exist
@@ -97,9 +150,8 @@ const validateAssignClassData = async (data) => {
 
     if (!timeSlot) {
       errors.push('Time slot not found');
-    } else if (timeSlot.isBreak) {
-      errors.push('Cannot assign classes during break time');
     }
+    // Validate time slot and assignments
 
     // Business rule validations
     if (room && classType === 'P' && room.type && !room.type.toLowerCase().includes('lab')) {
@@ -108,6 +160,11 @@ const validateAssignClassData = async (data) => {
 
     if (teachers && teachers.length > 1 && classType !== 'P') {
       errors.push('Multiple teachers are typically only allowed for practical/lab classes');
+    }
+    
+    // Validate lab group selection for practical classes
+    if (classType === 'P' && (!labGroup || !['A', 'B', 'ALL'].includes(labGroup))) {
+      errors.push('Please select a valid lab group (A, B, or ALL) for practical classes');
     }
 
   } catch (dbError) {
@@ -215,6 +272,8 @@ const checkAdvancedConflicts = async (data, existingSlotId = null) => {
 exports.getRoutine = async (req, res) => {
   try {
     const { programCode, semester, section } = req.params;
+    
+    console.log(`🎯 getRoutine API called for: ${programCode}-${semester}-${section}`);
 
     // Get program to validate programCode
     const program = await Program.findOne({ code: programCode.toUpperCase() });
@@ -238,6 +297,15 @@ exports.getRoutine = async (req, res) => {
       .sort({ dayIndex: 1, slotIndex: 1 });
 
     console.log(`Found ${routineSlots.length} routine slots for ${programCode}-${semester}-${section}`);
+    
+    // Debug: Log slots with lab groups
+    const multiGroupSlots = routineSlots.filter(slot => slot.labGroup && ['A', 'B'].includes(slot.labGroup));
+    if (multiGroupSlots.length > 0) {
+      console.log(`🔍 Found ${multiGroupSlots.length} multi-group slots:`);
+      multiGroupSlots.forEach(slot => {
+        console.log(`   - Day ${slot.dayIndex}, Slot ${slot.slotIndex}, Group ${slot.labGroup}, Subject: ${slot.subjectId}`);
+      });
+    }
 
     // Group by days and slots for easier frontend consumption
     const routine = {};
@@ -250,7 +318,7 @@ exports.getRoutine = async (req, res) => {
         routine[slot.dayIndex] = {};
       }
       
-      routine[slot.dayIndex][slot.slotIndex] = {
+      const slotData = {
         _id: slot._id,
         subjectId: slot.subjectId?._id,
         subjectName: slot.subjectName_display || slot.subjectId?.name,
@@ -262,8 +330,36 @@ exports.getRoutine = async (req, res) => {
         roomName: slot.roomName_display || slot.roomId?.name,
         classType: slot.classType,
         notes: slot.notes,
-        timeSlot_display: slot.timeSlot_display
+        timeSlot_display: slot.timeSlot_display,
+        spanId: slot.spanId,
+        spanMaster: slot.spanMaster,
+        labGroup: slot.labGroup,  // Include lab group information
+        alternateWeeks: slot.alternateWeeks,  // Include alternate weeks flag
+        alternateGroupData: slot.alternateGroupData  // Include alternate group configuration
       };
+      
+      // Handle multiple lab groups in the same time slot
+      if (routine[slot.dayIndex][slot.slotIndex]) {
+        // If slot already exists, convert to array or add to existing array
+        const existing = routine[slot.dayIndex][slot.slotIndex];
+        
+        console.log(`🔄 Found duplicate slot - Day ${slot.dayIndex}, Slot ${slot.slotIndex}`);
+        console.log(`   Existing: labGroup=${existing.labGroup || 'none'}, subject=${existing.subjectId}`);
+        console.log(`   New: labGroup=${slotData.labGroup || 'none'}, subject=${slotData.subjectId}`);
+        
+        if (Array.isArray(existing)) {
+          // Already an array, add new slot
+          existing.push(slotData);
+          console.log(`   Added to existing array, now has ${existing.length} items`);
+        } else {
+          // Convert single slot to array with both slots
+          routine[slot.dayIndex][slot.slotIndex] = [existing, slotData];
+          console.log(`   Converted to array with 2 items`);
+        }
+      } else {
+        // First slot for this time - store directly
+        routine[slot.dayIndex][slot.slotIndex] = slotData;
+      }
     });
 
     console.log(`Built routine object with ${Object.keys(routine).length} days, total slots: ${Object.values(routine).reduce((total, day) => total + Object.keys(day).length, 0)}`);
@@ -304,19 +400,24 @@ exports.assignClass = async (req, res) => {
 
   try {
     const { programCode, semester, section } = req.params;
-    const { dayIndex, slotIndex, subjectId, teacherIds, roomId, classType, notes } = req.body;
+    const { dayIndex, slotIndex, subjectId, teacherIds, roomId, classType, labGroup, alternateWeeks, alternateGroupData, notes } = req.body;
 
-    console.log('assignClass called with:', {
-      programCode,
-      semester,
-      section,
+    console.log('🚀 assignClass called with params:', { programCode, semester, section });
+    console.log('🚀 assignClass called with body:', {
       dayIndex,
       slotIndex,
       subjectId,
       teacherIds,
       roomId,
       classType,
-      notes
+      labGroup,
+      notes,
+      bodyTypes: {
+        dayIndex: typeof dayIndex,
+        slotIndex: typeof slotIndex,
+        classType: typeof classType,
+        labGroup: typeof labGroup
+      }
     });
 
     // Enhanced validation
@@ -330,11 +431,17 @@ exports.assignClass = async (req, res) => {
       teacherIds,
       roomId,
       classType,
+      labGroup,
+      alternateWeeks,
       notes
     };
 
+    console.log('🚀 Validation data prepared:', validationData);
+
     const validationErrors = await validateAssignClassData(validationData);
     if (validationErrors.length > 0) {
+      console.error('❌ Validation errors:', validationErrors);
+      console.error('❌ Validation data was:', validationData);
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
@@ -342,11 +449,20 @@ exports.assignClass = async (req, res) => {
       });
     }
 
-    // Validate input arrays
-    if (!Array.isArray(teacherIds) || teacherIds.length === 0) {
+    // Validate input arrays (skip for breaks)
+    if (classType !== 'BREAK' && (!Array.isArray(teacherIds) || teacherIds.length === 0)) {
       return res.status(400).json({
         success: false,
-        message: 'At least one teacher must be assigned'
+        message: 'At least one teacher must be assigned for non-break classes'
+      });
+    }
+
+    // Get current academic calendar
+    const academicCalendar = await AcademicCalendar.findOne({ isCurrentYear: true });
+    if (!academicCalendar) {
+      return res.status(400).json({
+        success: false,
+        message: 'No active academic calendar found'
       });
     }
 
@@ -359,55 +475,130 @@ exports.assignClass = async (req, res) => {
       slotIndex
     });
 
-    // Enhanced conflict detection
-    const conflicts = await checkAdvancedConflicts(validationData, existingSlot?._id);
-    
-    if (conflicts.length > 0) {
-      return res.status(409).json({
-        success: false,
-        message: 'Scheduling conflicts detected',
-        conflicts: conflicts,
-        conflictCount: conflicts.length
-      });
+    // Skip conflict detection for breaks
+    if (classType !== 'BREAK') {
+      // Enhanced conflict detection using advanced service
+      const conflictValidationData = {
+        ...validationData,
+        academicYearId: academicCalendar._id,
+        recurrence: { type: 'weekly', description: 'Weekly' },
+        classType,
+        labGroupId: null,
+        electiveGroupId: null
+      };
+
+      // Use advanced conflict detection service
+      const advancedConflicts = await ConflictDetectionService.validateSchedule(conflictValidationData);
+      
+      // Also run basic conflict detection for backward compatibility
+      const basicConflicts = await checkAdvancedConflicts(validationData, existingSlot?._id);
+      
+      // Combine both conflict detection results
+      const allConflicts = [...advancedConflicts, ...basicConflicts];
+      
+      if (allConflicts.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'Scheduling conflicts detected',
+          conflicts: allConflicts,
+          conflictCount: allConflicts.length,
+          detectionMethod: 'advanced+basic'
+        });
+      }
     }
 
-    // Get reference data for denormalized fields
-    const [subject, teachers, room, timeSlot] = await Promise.all([
-      Subject.findById(subjectId),
-      Teacher.find({ _id: { $in: teacherIds } }),
-      Room.findById(roomId),
-      TimeSlot.findOne({ _id: slotIndex })
-    ]);
+    // Get reference data for denormalized fields (conditional for breaks)
+    let subject, teachers, room, timeSlot, program;
+    
+    if (classType === 'BREAK') {
+      // For breaks, we only need timeSlot and program
+      [timeSlot, program] = await Promise.all([
+        TimeSlot.findOne({ _id: slotIndex }),
+        Program.findOne({ code: programCode.toUpperCase() })
+      ]);
+      subject = null;
+      teachers = [];
+      room = null;
+    } else {
+      // For regular classes, get all reference data
+      [subject, teachers, room, timeSlot, program] = await Promise.all([
+        Subject.findById(subjectId),
+        Teacher.find({ _id: { $in: teacherIds } }),
+        Room.findById(roomId),
+        TimeSlot.findOne({ _id: slotIndex }),
+        Program.findOne({ code: programCode.toUpperCase() })
+      ]);
+    }
 
-    // Final validation (should have been caught earlier but double-check)
-    if (!subject || teachers.length !== teacherIds.length || !room || !timeSlot) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid reference data - subject, teachers, room, or time slot not found'
-      });
+    // Final validation (conditional for breaks)
+    if (classType === 'BREAK') {
+      if (!timeSlot || !program) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid reference data - time slot or program not found'
+        });
+      }
+    } else {
+      if (!subject || teachers.length !== teacherIds.length || !room || !timeSlot || !program) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid reference data - subject, teachers, room, time slot, or program not found'
+        });
+      }
     }
 
     const slotData = {
-      programCode: programCode.toUpperCase(),
+      // Required schema fields
+      programId: program._id,
+      academicYearId: academicCalendar._id,
       semester: parseInt(semester),
       section: section.toUpperCase(),
+      // Legacy fields for compatibility
+      programCode: programCode.toUpperCase(),
       dayIndex,
       slotIndex,
-      subjectId,
-      teacherIds,
-      roomId,
       classType: classType || 'L',
+      // Lab group for practical classes
+      labGroup: classType === 'P' ? labGroup : null,
+      // Whether lab groups alternate weeks
+      alternateWeeks: classType === 'P' ? !!alternateWeeks : false,
+      // Store alternate group configuration
+      alternateGroupData: classType === 'P' && !!alternateWeeks ? alternateGroupData : null,
       notes: notes || '',
-      // Denormalized display fields for performance
-      subjectName_display: subject.name,
-      subjectCode_display: subject.code,
-      teacherShortNames_display: teachers.map(t => 
-        t.shortName || t.fullName.split(' ').map(n => n[0]).join('.')
-      ),
-      roomName_display: room.name,
-      timeSlot_display: `${timeSlot.startTime} - ${timeSlot.endTime}`,
       updatedAt: new Date()
     };
+
+    // Add class-specific fields only for non-breaks
+    if (classType !== 'BREAK') {
+      slotData.subjectId = subjectId;
+      slotData.teacherIds = teacherIds;
+      slotData.roomId = roomId;
+      
+      // Denormalized display fields for performance
+      slotData.subjectName_display = subject.name;
+      slotData.subjectCode_display = subject.code;
+      
+      // Add lab group information to display name for practical classes
+      if (classType === 'P' && labGroup) {
+        const groupLabel = labGroup === 'A' ? ' (Group A)' : 
+                           labGroup === 'B' ? ' (Group B)' : 
+                           '';
+        slotData.subjectName_display = subject.name + groupLabel;
+      }
+      
+      slotData.teacherShortNames_display = teachers.map(t => 
+        t.shortName || t.fullName.split(' ').map(n => n[0]).join('.')
+      );
+      slotData.roomName_display = room.name;
+      slotData.timeSlot_display = `${timeSlot.startTime} - ${timeSlot.endTime}`;
+    } else {
+      // For breaks, set display fields to show "BREAK"
+      slotData.subjectName_display = 'BREAK';
+      slotData.subjectCode_display = 'BREAK';
+      slotData.teacherShortNames_display = [];
+      slotData.roomName_display = '';
+      slotData.timeSlot_display = `${timeSlot.startTime} - ${timeSlot.endTime}`;
+    }
 
     let routineSlot;
     if (existingSlot) {
@@ -439,17 +630,23 @@ exports.assignClass = async (req, res) => {
         .filter(id => id != null && id.toString());
       
       if (affectedTeacherIds.length > 0) {
-        const { publishToQueue } = require('../services/queue.service');
-        await publishToQueue('teacher_routine_updates', { 
-          affectedTeacherIds,
-          action: existingSlot ? 'update' : 'create',
-          programCode,
-          semester,
-          section,
-          dayIndex,
-          slotIndex
-        });
-        console.log(`[Queue] Queued schedule updates for teachers: ${affectedTeacherIds.join(', ')}`);
+        // Try to load queue service dynamically
+        try {
+          const { publishToQueue } = require('../services/queue.service');
+          await publishToQueue('teacher_routine_updates', { 
+            affectedTeacherIds,
+            action: existingSlot ? 'update' : 'create',
+            programCode,
+            semester,
+            section,
+            dayIndex,
+            slotIndex
+          });
+          console.log(`[Queue] Queued schedule updates for teachers: ${affectedTeacherIds.join(', ')}`);
+        } catch (queueServiceError) {
+          console.warn('Queue service unavailable, skipping teacher schedule update queue:', queueServiceError.message);
+          // Continue without failing
+        }
       }
     } catch (queueError) {
       console.error('CRITICAL: Failed to queue teacher schedule updates:', queueError);
@@ -464,7 +661,7 @@ exports.assignClass = async (req, res) => {
       metadata: {
         operation: existingSlot ? 'update' : 'create',
         conflictsChecked: true,
-        teachersAffected: teacherIds.length,
+        teachersAffected: teacherIds ? teacherIds.length : 0,
         queuedForUpdate: true
       }
     });
@@ -502,8 +699,11 @@ exports.assignClass = async (req, res) => {
 // @route   POST /api/routines/assign-class-spanned
 // @access  Private/Admin
 exports.assignClassSpanned = async (req, res) => {
+  console.log('🔄 assignClassSpanned called with data:', JSON.stringify(req.body, null, 2));
+  
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    console.error('❌ Validation errors:', errors.array());
     return res.status(400).json({
       success: false,
       errors: errors.array()
@@ -515,14 +715,22 @@ exports.assignClassSpanned = async (req, res) => {
   
   // Start a session if we're not in test environment
   let session = null;
-  if (!isTestEnvironment) {
-    session = await mongoose.startSession();
-    session.startTransaction();
+  try {
+    if (!isTestEnvironment) {
+      session = await mongoose.startSession();
+      session.startTransaction();
+      console.log('Started MongoDB transaction session');
+    }
+  } catch (sessionError) {
+    console.error('Failed to start MongoDB transaction session:', sessionError);
+    // Continue without session if we can't create one
   }
 
   try {
     const { 
       programCode, 
+      programId,
+      academicYearId,
       semester, 
       section, 
       dayIndex, 
@@ -531,8 +739,258 @@ exports.assignClassSpanned = async (req, res) => {
       teacherIds, 
       roomId, 
       classType, 
-      notes 
+      notes,
+      // Lab group fields for "bothGroups" scenario
+      labGroupType,
+      groupASubject,
+      groupBSubject,
+      groupATeachers,
+      groupBTeachers,
+      groupARoom,
+      groupBRoom,
+      labGroup,
+      displayLabel
     } = req.body;
+
+    console.log('📝 Processing spanned class assignment:', {
+      programCode,
+      programId,
+      academicYearId,
+      semester,
+      section,
+      dayIndex,
+      slotIndexes,
+      subjectId,
+      teacherIds,
+      roomId,
+      classType,
+      labGroupType,
+      labGroup
+    });
+
+    // Auto-lookup missing programId and academicYearId if not provided
+    let finalProgramId = programId;
+    let finalAcademicYearId = academicYearId;
+
+    if (!finalProgramId || !finalAcademicYearId) {
+      console.log('🔍 Looking up missing programId and/or academicYearId...');
+      
+      // Look up program by code if programId is missing
+      if (!finalProgramId && programCode) {
+        const program = await Program.findOne({ code: programCode.toUpperCase() });
+        if (program) {
+          finalProgramId = program._id;
+          console.log('✅ Found programId:', finalProgramId);
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: `Program not found for code: ${programCode}`
+          });
+        }
+      }
+
+      // Look up active academic year if academicYearId is missing
+      if (!finalAcademicYearId) {
+        const academicYear = await AcademicCalendar.findOne({ status: 'active' });
+        if (academicYear) {
+          finalAcademicYearId = academicYear._id;
+          console.log('✅ Found active academicYearId:', finalAcademicYearId);
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: 'No active academic year found'
+          });
+        }
+      }
+    }
+
+    // Get time slot displays for denormalized fields
+    const timeSlots = await TimeSlot.find().sort({ order: 1 });
+    
+    // Create a map for slot ID to timeSlot lookup
+    const timeSlotMap = new Map();
+    timeSlots.forEach((slot) => {
+      timeSlotMap.set(slot._id, slot);
+    });
+
+    // Convert all slot identifiers to integers (TimeSlot._id values)
+    const actualSlotIndexes = slotIndexes.map(slot => {
+      const slotId = parseInt(slot);
+      if (isNaN(slotId)) {
+        throw new Error(`Invalid slot ID: ${slot} - must be a number`);
+      }
+      return slotId;
+    });
+    
+    console.log('✅ Using slot IDs directly as slot indexes:', actualSlotIndexes);
+
+    // Special handling for "bothGroups" lab classes - Create separate slots for each group
+    if (labGroupType === 'bothGroups' && classType === 'P') {
+      console.log('🔄 Processing bothGroups lab class - creating separate assignments for each group');
+      
+      // Validate that both groups have the required data
+      if (!groupASubject || !groupBSubject) {
+        return res.status(400).json({
+          success: false,
+          message: 'Both Group A and Group B subjects are required for bothGroups lab classes'
+        });
+      }
+      
+      if (!groupATeachers || !groupBTeachers || groupATeachers.length === 0 || groupBTeachers.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Both Group A and Group B teachers are required for bothGroups lab classes'
+        });
+      }
+      
+      if (!groupARoom || !groupBRoom) {
+        return res.status(400).json({
+          success: false,
+          message: 'Both Group A and Group B rooms are required for bothGroups lab classes'
+        });
+      }
+      
+      // Create two separate spanned assignments - one for each group
+      const groupAssignments = [
+        {
+          subjectId: groupASubject,
+          teacherIds: groupATeachers,
+          roomId: groupARoom,
+          labGroup: 'A',
+          displaySuffix: ' (Group A)'
+        },
+        {
+          subjectId: groupBSubject,
+          teacherIds: groupBTeachers,
+          roomId: groupBRoom,
+          labGroup: 'B',
+          displaySuffix: ' (Group B)'
+        }
+      ];
+      
+      const createdSlotGroups = [];
+      
+      for (const groupAssignment of groupAssignments) {
+        // Create a separate spanId for each group
+        const spanId = new mongoose.Types.ObjectId();
+        const createdSlots = [];
+        
+        // Get subject, teachers, and room data for this group
+        const subject = await Subject.findById(groupAssignment.subjectId);
+        const teachers = await Teacher.find({ _id: { $in: groupAssignment.teacherIds } });
+        const room = await Room.findById(groupAssignment.roomId);
+        
+        if (!subject || teachers.length !== groupAssignment.teacherIds.length || !room) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid subject, teacher, or room ID provided for ${groupAssignment.labGroup === 'A' ? 'Group A' : 'Group B'}`
+          });
+        }
+        
+        // Create slots for each time slot
+        for (let i = 0; i < actualSlotIndexes.length; i++) {
+          const slotIndex = actualSlotIndexes[i];
+          const isSpanMaster = i === 0;
+          
+          // Get time slot for this slotIndex
+          const timeSlot = timeSlotMap.get(slotIndex);
+          if (!timeSlot) {
+            console.error(`TimeSlot not found for index ${slotIndex}`);
+            continue;
+          }
+          
+          const slotData = {
+            programId: finalProgramId,
+            academicYearId: finalAcademicYearId,
+            programCode: programCode.toUpperCase(),
+            semester: parseInt(semester),
+            section: section.toUpperCase(),
+            dayIndex,
+            slotIndex,
+            subjectId: groupAssignment.subjectId,
+            teacherIds: groupAssignment.teacherIds,
+            roomId: groupAssignment.roomId,
+            classType: classType || 'P',
+            notes: notes || '',
+            // Span fields
+            spanMaster: isSpanMaster,
+            spanId: spanId,
+            // Lab group info - CRITICAL: This allows separate slots for same time period
+            labGroup: groupAssignment.labGroup,
+            // Denormalized display fields
+            subjectName_display: (subject?.name || 'Unknown Subject') + groupAssignment.displaySuffix,
+            subjectCode_display: subject?.code || '',
+            teacherShortNames_display: teachers.map(t => 
+              t?.shortName || (t?.fullName ? t.fullName.split(' ').map(n => n[0]).join('.') : 'Unknown')
+            ),
+            roomName_display: room?.name || 'Unknown Room',
+            timeSlot_display: timeSlot ? `${timeSlot.startTime} - ${timeSlot.endTime}` : ''
+          };
+
+          // Create new slot
+          const routineSlot = session ?
+            await RoutineSlot.create([slotData], { session }) :
+            await RoutineSlot.create(slotData);
+          
+          createdSlots.push(session ? routineSlot[0] : routineSlot);
+        }
+        
+        createdSlotGroups.push({
+          group: groupAssignment.labGroup,
+          slots: createdSlots
+        });
+      }
+      
+      // Commit transaction if session exists
+      if (session) {
+        try {
+          await session.commitTransaction();
+          console.log('Successfully committed transaction for bothGroups');
+          session.endSession();
+        } catch (commitError) {
+          console.error('Error committing transaction:', commitError);
+          try {
+            await session.abortTransaction();
+          } catch (abortError) {
+            console.error('Error aborting transaction:', abortError);
+          } finally {
+            session.endSession();
+          }
+          throw new Error('Failed to commit transaction: ' + commitError.message);
+        }
+      }
+      
+      // Handle teacher schedule updates for both groups
+      const allTeacherIds = [...groupATeachers, ...groupBTeachers];
+      const affectedTeacherIds = [...new Set(allTeacherIds)]
+        .filter(id => id != null && id !== undefined)
+        .map(id => typeof id === 'object' && id._id ? id._id.toString() : id.toString());
+      
+      if (affectedTeacherIds.length > 0) {
+        try {
+          const { publishToQueue } = require('../services/queue.service');
+          await publishToQueue(
+            'teacher_routine_updates', 
+            { affectedTeacherIds }
+          );
+          console.log(`[Queue] Queued schedule updates for teachers: ${affectedTeacherIds.join(', ')}`);
+        } catch (queueServiceError) {
+          console.warn('Queue service unavailable, skipping teacher schedule update queue:', queueServiceError.message);
+        }
+      }
+      
+      return res.status(201).json({
+        success: true,
+        message: `Multi-period bothGroups lab class assigned successfully across ${actualSlotIndexes.length} periods for both groups!`,
+        data: {
+          slotGroups: createdSlotGroups.map(group => ({
+            group: group.group,
+            slotCount: group.slots.length,
+            spanId: group.slots[0]?.spanId
+          }))
+        }
+      });
+    }
 
     // 1. Validate input
     if (!Array.isArray(slotIndexes) || slotIndexes.length === 0) {
@@ -550,7 +1008,7 @@ exports.assignClassSpanned = async (req, res) => {
     }
 
     // 2. Check for collisions for each slotIndex
-    for (const slotIndex of slotIndexes) {
+    for (const slotIndex of actualSlotIndexes) {
       // Check for teacher conflicts
       for (const teacherId of teacherIds) {
         const teacherConflict = await RoutineSlot.findOne({
@@ -639,13 +1097,6 @@ exports.assignClassSpanned = async (req, res) => {
     const subject = await Subject.findById(subjectId);
     const teachers = await Teacher.find({ _id: { $in: teacherIds } });
     const room = await Room.findById(roomId);
-    
-    // Get time slot displays for denormalized fields
-    const timeSlots = await TimeSlot.find({
-      _id: { $in: slotIndexes }
-    });
-    
-    const timeSlotMap = new Map(timeSlots.map(ts => [ts._id.toString(), ts]));
 
     if (!subject || teachers.length !== teacherIds.length || !room) {
       return res.status(400).json({
@@ -660,14 +1111,29 @@ exports.assignClassSpanned = async (req, res) => {
     // 5. Create routine slots for each slotIndex within transaction
     const createdSlots = [];
     
-    for (let i = 0; i < slotIndexes.length; i++) {
-      const slotIndex = slotIndexes[i];
+    // Add validation for timeSlotMap lookup
+    if (actualSlotIndexes.some(idx => timeSlotMap.get(idx) === undefined)) {
+      console.error('Invalid slot index found. Available indexes:', [...timeSlotMap.keys()]);
+      console.error('Requested indexes:', actualSlotIndexes);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid slot index provided - slot not found in time slots'
+      });
+    }
+    
+    for (let i = 0; i < actualSlotIndexes.length; i++) {
+      const slotIndex = actualSlotIndexes[i];
       const isSpanMaster = i === 0; // First slot is the span master
       
       // Get time slot for this slotIndex
-      const timeSlot = timeSlotMap.get(slotIndex.toString());
-      
+      const timeSlot = timeSlotMap.get(slotIndex);
+      if (!timeSlot) {
+        console.error(`TimeSlot not found for index ${slotIndex}`);
+        continue; // Skip this slot if timeSlot not found
+      }
       const slotData = {
+        programId: finalProgramId,
+        academicYearId: finalAcademicYearId,
         programCode: programCode.toUpperCase(),
         semester: parseInt(semester),
         section: section.toUpperCase(),
@@ -682,10 +1148,12 @@ exports.assignClassSpanned = async (req, res) => {
         spanMaster: isSpanMaster,
         spanId: spanId,
         // Denormalized display fields
-        subjectName_display: subject.name,
-        subjectCode_display: subject.code,
-        teacherShortNames_display: teachers.map(t => t.shortName || t.fullName.split(' ').map(n => n[0]).join('.')),
-        roomName_display: room.name,
+        subjectName_display: subject?.name || 'Unknown Subject',
+        subjectCode_display: subject?.code || '',
+        teacherShortNames_display: teachers.map(t => 
+          t?.shortName || (t?.fullName ? t.fullName.split(' ').map(n => n[0]).join('.') : 'Unknown')
+        ),
+        roomName_display: room?.name || 'Unknown Room',
         timeSlot_display: timeSlot ? `${timeSlot.startTime} - ${timeSlot.endTime}` : ''
       };
 
@@ -699,8 +1167,21 @@ exports.assignClassSpanned = async (req, res) => {
 
     // 6. Commit transaction if session exists
     if (session) {
-      await session.commitTransaction();
-      session.endSession();
+      try {
+        await session.commitTransaction();
+        console.log('Successfully committed transaction');
+        session.endSession();
+      } catch (commitError) {
+        console.error('Error committing transaction:', commitError);
+        try {
+          await session.abortTransaction();
+        } catch (abortError) {
+          console.error('Error aborting transaction:', abortError);
+        } finally {
+          session.endSession();
+        }
+        throw new Error('Failed to commit transaction: ' + commitError.message);
+      }
     }
 
     // 7. Publish message to queue for teacher schedule regeneration
@@ -709,16 +1190,26 @@ exports.assignClassSpanned = async (req, res) => {
       const oldTeacherIds = []; // No existing teachers for new spanned class
       const newTeacherIds = teacherIds || [];
       
+      // Ensure each ID is properly converted to string
       const affectedTeacherIds = [...new Set([...oldTeacherIds, ...newTeacherIds])]
-        .filter(id => id != null && id.toString()); // Ensure IDs are valid
+        .filter(id => id != null && id !== undefined)
+        .map(id => typeof id === 'object' && id._id ? id._id.toString() : id.toString());
+      
+      console.log('Processing affected teacher IDs:', affectedTeacherIds);
       
       if (affectedTeacherIds.length > 0) {
-        const { publishToQueue } = require('../services/queue.service');
-        await publishToQueue(
-          'teacher_routine_updates', 
-          { affectedTeacherIds }
-        );
-        console.log(`[Queue] Queued schedule updates for teachers: ${affectedTeacherIds.join(', ')}`);
+        // Try to load queue service dynamically
+        try {
+          const { publishToQueue } = require('../services/queue.service');
+          await publishToQueue(
+            'teacher_routine_updates', 
+            { affectedTeacherIds }
+          );
+          console.log(`[Queue] Queued schedule updates for teachers: ${affectedTeacherIds.join(', ')}`);
+        } catch (queueServiceError) {
+          console.warn('Queue service unavailable, skipping teacher schedule update queue:', queueServiceError.message);
+          // Continue without failing
+        }
       }
     } catch (queueError) {
       console.error('CRITICAL: Failed to queue teacher schedule updates. Manual regeneration may be required.', queueError);
@@ -747,16 +1238,29 @@ exports.assignClassSpanned = async (req, res) => {
         slots: createdSlots,
         spanMaster: createdSlots.find(slot => slot.spanMaster === true)
       },
-      message: `Spanned class successfully assigned across ${slotIndexes.length} slots`
+      message: `Spanned class successfully assigned across ${actualSlotIndexes.length} slots`
     });
   } catch (error) {
     // Abort transaction on error if session exists
     if (session) {
-      await session.abortTransaction();
-      session.endSession();
+      try {
+        await session.abortTransaction();
+        console.log('Transaction aborted due to error');
+      } catch (abortError) {
+        console.error('Error aborting transaction:', abortError);
+      } finally {
+        session.endSession();
+      }
     }
     
     console.error('Error in assignClassSpanned:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      requestBody: req.body
+    });
     
     if (error.code === 11000) {
       return res.status(409).json({
@@ -765,9 +1269,24 @@ exports.assignClassSpanned = async (req, res) => {
       });
     }
     
+    // Handle different error types
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors: Object.values(error.errors).map(e => e.message)
+      });
+    } else if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid ${error.path}: ${error.value}`
+      });
+    }
+    
     res.status(500).json({
       success: false,
-      message: 'Server Error'
+      message: 'Server Error',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 };
@@ -810,12 +1329,18 @@ exports.clearClass = async (req, res) => {
         .filter(id => id != null && id.toString()); // Ensure IDs are valid
       
       if (affectedTeacherIds.length > 0) {
-        const { publishToQueue } = require('../services/queue.service');
-        await publishToQueue(
-          'teacher_routine_updates', 
-          { affectedTeacherIds }
-        );
-        console.log(`[Queue] Queued schedule updates for teachers: ${affectedTeacherIds.join(', ')}`);
+        // Try to load queue service dynamically
+        try {
+          const { publishToQueue } = require('../services/queue.service');
+          await publishToQueue(
+            'teacher_routine_updates', 
+            { affectedTeacherIds }
+          );
+          console.log(`[Queue] Queued schedule updates for teachers: ${affectedTeacherIds.join(', ')}`);
+        } catch (queueServiceError) {
+          console.warn('Queue service unavailable, skipping teacher schedule update queue:', queueServiceError.message);
+          // Continue without failing
+        }
       }
     } catch (queueError) {
       console.error('CRITICAL: Failed to queue teacher schedule updates. Manual regeneration may be required.', queueError);
@@ -890,12 +1415,18 @@ exports.clearEntireRoutine = async (req, res) => {
     // Publish message to queue for teacher schedule regeneration
     try {
       if (uniqueTeacherIds.length > 0) {
-        const { publishToQueue } = require('../services/queue.service');
-        await publishToQueue(
-          'teacher_routine_updates', 
-          { affectedTeacherIds: uniqueTeacherIds }
-        );
-        console.log(`[Queue] Queued schedule updates for teachers: ${uniqueTeacherIds.join(', ')}`);
+        // Try to load queue service dynamically
+        try {
+          const { publishToQueue } = require('../services/queue.service');
+          await publishToQueue(
+            'teacher_routine_updates', 
+            { affectedTeacherIds: uniqueTeacherIds }
+          );
+          console.log(`[Queue] Queued schedule updates for teachers: ${uniqueTeacherIds.join(', ')}`);
+        } catch (queueServiceError) {
+          console.warn('Queue service unavailable, skipping teacher schedule update queue:', queueServiceError.message);
+          // Continue without failing
+        }
       }
     } catch (queueError) {
       console.error('CRITICAL: Failed to queue teacher schedule updates. Manual regeneration may be required.', queueError);
@@ -1120,7 +1651,7 @@ exports.importRoutineFromExcel = async (req, res) => {
     const RoutineSlot = require('../models/RoutineSlot');
     
     const timeSlots = await TimeSlotDefinition.find().sort({ sortOrder: 1 });
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     
     // Parse Excel structure
     // Row 1: Title (merged)
@@ -1138,8 +1669,7 @@ exports.importRoutineFromExcel = async (req, res) => {
         if (slotIndex < timeSlots.length) {
           timeSlotColumns.push({
             columnIndex: col,
-            slotIndex: timeSlots[slotIndex]._id,
-            isBreak: timeSlots[slotIndex].isBreak
+            slotIndex: timeSlots[slotIndex]._id
           });
         }
       }
@@ -1210,10 +1740,6 @@ exports.importRoutineFromExcel = async (req, res) => {
 
       // Parse each time slot column for this day
       for (const timeSlotCol of timeSlotColumns) {
-        if (timeSlotCol.isBreak) {
-          continue; // Skip break columns
-        }
-
         const cell = row.getCell(timeSlotCol.columnIndex);
         if (!cell.value || cell.value.toString().trim() === '') {
           continue; // Empty cell - no class
@@ -1222,8 +1748,8 @@ exports.importRoutineFromExcel = async (req, res) => {
         try {
           const cellContent = cell.value.toString().trim();
           
-          // Skip if it's just "BREAK" or empty
-          if (cellContent.toUpperCase() === 'BREAK' || cellContent === '') {
+          // Skip if empty
+          if (cellContent === '') {
             continue;
           }
 
@@ -1803,8 +2329,8 @@ exports.checkTeacherAvailability = async (req, res) => {
       });
     }
 
-    // Validate teacher exists
-    const teacher = await Teacher.findById(teacherId);
+    // Validate teacher exists with lean query for performance
+    const teacher = await Teacher.findById(teacherId).lean();
     if (!teacher) {
       return res.status(404).json({
         success: false,
@@ -1812,12 +2338,24 @@ exports.checkTeacherAvailability = async (req, res) => {
       });
     }
 
+    // Use lean query and specific field selection for better performance
     const conflict = await RoutineSlot.findOne({
       dayIndex: parseInt(dayIndex),
       slotIndex: parseInt(slotIndex),
       teacherIds: teacherId
-    }).populate('subjectId', 'name')
-      .populate('roomId', 'name');
+    }, {
+      programCode: 1,
+      semester: 1,
+      section: 1,
+      subjectName_display: 1,
+      roomName_display: 1,
+      subjectId: 1,
+      roomId: 1
+    })
+    .populate('subjectId', 'name')
+    .populate('roomId', 'name')
+    .lean()
+    .maxTimeMS(10000); // 10 second timeout
 
     const isAvailable = !conflict;
 
@@ -1833,16 +2371,17 @@ exports.checkTeacherAvailability = async (req, res) => {
           programCode: conflict.programCode,
           semester: conflict.semester,
           section: conflict.section,
-          subjectName: conflict.subjectName_display || conflict.subjectId?.name,
-          roomName: conflict.roomName_display || conflict.roomId?.name
+          subjectName: conflict.subjectName || conflict.subjectId?.name,
+          roomName: conflict.roomName || conflict.roomId?.name
         } : null
       }
     });
   } catch (error) {
-    console.error(error);
+    console.error('Teacher availability check error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server Error'
+      message: 'Server Error',
+      error: error.message
     });
   }
 };
@@ -1879,7 +2418,7 @@ exports.getAvailableSubjects = async (req, res) => {
 
     res.json({
       success: true,
-      data: subjects,
+                data: subjects,
       programCode: programCode.toUpperCase(),
       semester: parseInt(semester)
     });
@@ -1896,3 +2435,1230 @@ exports.getAvailableSubjects = async (req, res) => {
 // NOTE: Teacher schedule functionality has been moved to teacherScheduleController.js
 // All related functions (getTeacherSchedule and exportTeacherScheduleToExcel) have been moved
 // to maintain proper separation of concerns and avoid duplicate code.
+
+// @desc    Analyze schedule conflicts without creating a slot
+// @route   POST /api/routines/conflicts/analyze
+// @access  Private/Admin
+exports.analyzeScheduleConflicts = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const {
+      programId,
+      subjectId,
+      semester,
+      section,
+      dayIndex,
+      slotIndex,
+      teacherIds,
+      roomId,
+      classType,
+      recurrence
+    } = req.body;
+
+    // Get current academic year
+    const currentAcademicYear = await AcademicCalendar.findOne({ isCurrentYear: true });
+    if (!currentAcademicYear) {
+      return res.status(400).json({
+        success: false,
+        message: 'No current academic year found'
+      });
+    }
+
+    // Prepare slot data for analysis
+    const slotData = {
+      programId,
+      subjectId,
+      academicYearId: currentAcademicYear._id,
+      semester: parseInt(semester),
+      section: section.toUpperCase(),
+      dayIndex,
+      slotIndex,
+      teacherIds,
+      roomId,
+      classType,
+      recurrence: recurrence || { type: 'weekly', description: 'Weekly' },
+      labGroupId: null,
+      electiveGroupId: null
+    };
+
+    // Run advanced conflict detection
+    const conflicts = await ConflictDetectionService.validateSchedule(slotData);
+
+    // Get additional context for conflicts
+    const analysisResults = {
+      hasConflicts: conflicts.length > 0,
+      conflictCount: conflicts.length,
+      conflicts: conflicts,
+      slotData: {
+        dayName: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayIndex],
+        slotIndex,
+        academicYear: currentAcademicYear.title
+      },
+      recommendations: []
+    };
+
+    // Add recommendations based on conflicts
+    if (conflicts.length > 0) {
+      const conflictTypes = conflicts.map(c => c.type);
+      
+      if (conflictTypes.includes('teacher_schedule_conflict')) {
+        analysisResults.recommendations.push('Consider assigning a different teacher or changing the time slot');
+      }
+      
+      if (conflictTypes.includes('room_conflict')) {
+        analysisResults.recommendations.push('Try using a different room or rescheduling to another time');
+      }
+      
+      if (conflictTypes.includes('teacher_unavailable_day')) {
+        analysisResults.recommendations.push('Check teacher availability constraints and reschedule to an available day');
+      }
+      
+      if (conflictTypes.includes('section_conflict')) {
+        analysisResults.recommendations.push('Students cannot attend multiple classes simultaneously - reschedule one class');
+      }
+    } else {
+      analysisResults.recommendations.push('No conflicts detected - this slot can be safely assigned');
+    }
+
+    res.json({
+      success: true,
+      message: 'Conflict analysis completed',
+      data: analysisResults
+    });
+
+  } catch (error) {
+    console.error('Error in analyzeScheduleConflicts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Create unified elective routine for 7th/8th semester
+// @route   POST /api/routines/electives/schedule
+// @access  Private/Admin
+exports.scheduleElectiveClass = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const {
+      programId,
+      semester,
+      subjectId,
+      dayIndex,
+      slotIndex,
+      teacherIds,
+      roomId,
+      classType,
+      electiveGroupId,
+      electiveType,
+      electiveNumber,
+      studentEnrollment
+    } = req.body;
+
+    // Validate semester (only 7th and 8th allowed for electives)
+    if (![7, 8].includes(parseInt(semester))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Elective scheduling only allowed for 7th and 8th semester'
+      });
+    }
+
+    // Get current academic year
+    const currentAcademicYear = await AcademicCalendar.findOne({ isCurrentYear: true });
+    if (!currentAcademicYear) {
+      return res.status(400).json({
+        success: false,
+        message: 'No current academic year found'
+      });
+    }
+
+    // Get subject and validation data
+    const subject = await Subject.findById(subjectId);
+    const teachers = await Teacher.find({ _id: { $in: teacherIds } });
+    const room = await Room.findById(roomId);
+
+    if (!subject || teachers.length !== teacherIds.length || !room) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid subject, teachers, or room'
+      });
+    }
+
+    // Prepare elective slot data for conflict detection
+    const electiveSlotData = {
+      programId,
+      subjectId,
+      academicYearId: currentAcademicYear._id,
+      semester: parseInt(semester),
+      dayIndex,
+      slotIndex,
+      teacherIds,
+      roomId,
+      classType,
+      recurrence: { type: 'weekly', description: 'Weekly' },
+      labGroupId: null,
+      electiveGroupId,
+      // For electives, both sections can have students
+      targetSections: ['AB', 'CD']
+    };
+
+    // Run conflict detection
+    const conflicts = await ConflictDetectionService.validateSchedule(electiveSlotData);
+
+    if (conflicts.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Scheduling conflicts detected',
+        conflicts: conflicts,
+        conflictCount: conflicts.length
+      });
+    }
+
+    // Create the elective routine slot
+    const electiveSlot = new RoutineSlot({
+      programId,
+      subjectId,
+      academicYearId: currentAcademicYear._id,
+      semester: parseInt(semester),
+      
+      // Core positioning
+      dayIndex,
+      slotIndex,
+      
+      // Elective targeting - appears in both section routines
+      targetSections: ['AB', 'CD'],
+      displayInSections: ['AB', 'CD'],
+      
+      // Assignment
+      teacherIds,
+      roomId,
+      classType,
+      
+      // Classification
+      classCategory: 'ELECTIVE',
+      isElectiveClass: true,
+      electiveGroupId,
+      
+      // Elective-specific information
+      electiveInfo: {
+        electiveNumber: electiveNumber || 1,
+        electiveType: electiveType || 'TECHNICAL',
+        groupName: `${semester === 7 ? '7th' : '8th'} Sem ${electiveType} Elective`,
+        electiveCode: `ELEC-${electiveType.substring(0,4).toUpperCase()}-${electiveNumber || 1}`,
+        studentComposition: {
+          total: studentEnrollment.total,
+          fromAB: studentEnrollment.fromAB,
+          fromCD: studentEnrollment.fromCD,
+          distributionNote: `${studentEnrollment.total} students (${studentEnrollment.fromAB} from AB, ${studentEnrollment.fromCD} from CD)`
+        },
+        displayOptions: {
+          showInBothSections: true,
+          highlightAsElective: true,
+          customDisplayText: `${subject.name} (Mixed sections)`
+        }
+      },
+      
+      // Recurrence
+      recurrence: {
+        type: 'weekly',
+        description: 'Weekly elective class'
+      },
+      
+      // Display data
+      display: {
+        programCode: req.body.programCode || 'BCT',
+        semester: parseInt(semester),
+        section: 'MIXED',
+        subjectCode: subject.code,
+        subjectName: subject.name,
+        teacherNames: teachers.map(t => t.shortName).join(', '),
+        roomName: room.name,
+        classType
+      },
+      
+      isActive: true
+    });
+
+    await electiveSlot.save();
+
+    // Populate for response
+    await electiveSlot.populate([
+      { path: 'programId', select: 'code name' },
+      { path: 'subjectId', select: 'code name credits' },
+      { path: 'teacherIds', select: 'shortName fullName' },
+      { path: 'roomId', select: 'name roomNumber capacity' },
+      { path: 'academicYearId', select: 'title nepaliYear' }
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: 'Elective class scheduled successfully',
+      data: electiveSlot
+    });
+
+  } catch (error) {
+    console.error('Error in scheduleElectiveClass:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get unified section routine (includes electives)
+// @route   GET /api/routines/section/:programCode/:semester/:section
+// @access  Private
+exports.getUnifiedSectionRoutine = async (req, res) => {
+  try {
+    const { programCode, semester, section } = req.params;
+    const { academicYearId } = req.query;
+
+    // Get program
+    const program = await Program.findOne({ code: programCode.toUpperCase() });
+    if (!program) {
+      return res.status(404).json({
+        success: false,
+        message: 'Program not found'
+      });
+    }
+
+    // Get academic year
+    const academicYear = academicYearId 
+      ? await AcademicCalendar.findById(academicYearId)
+      : await AcademicCalendar.findOne({ isCurrentYear: true });
+
+    if (!academicYear) {
+      return res.status(404).json({
+        success: false,
+        message: 'Academic year not found'
+      });
+    }
+
+    // Query for routine slots that should appear in this section's routine
+    const routineQuery = {
+      programId: program._id,
+      semester: parseInt(semester),
+      section: section.toUpperCase(),
+      academicYearId: academicYear._id,
+      isActive: true
+    };
+
+    const routineSlots = await RoutineSlot.find(routineQuery)
+      .populate([
+        { path: 'subjectId', select: 'code name credits isElective' },
+        { path: 'teacherIds', select: 'shortName fullName' },
+        { path: 'roomId', select: 'name roomNumber capacity' },
+        { path: 'electiveGroupId', select: 'name code' }
+      ])
+      .sort({ dayIndex: 1, slotIndex: 1 });
+
+    // Separate core and elective classes
+    const coreClasses = routineSlots.filter(slot => slot.classCategory === 'CORE');
+    const electiveClasses = routineSlots.filter(slot => slot.classCategory === 'ELECTIVE');
+
+    // Format routine for display
+    const formattedRoutine = formatUnifiedRoutineForDisplay(routineSlots, section);
+
+    // Get elective summary
+    const electiveSummary = electiveClasses.map(slot => ({
+      electiveNumber: slot.electiveInfo?.electiveNumber,
+      electiveType: slot.electiveInfo?.electiveType,
+      subject: slot.subjectId?.name,
+      subjectCode: slot.subjectId?.code,
+      studentDistribution: slot.electiveInfo?.studentComposition?.distributionNote,
+      timeSlot: {
+        day: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][slot.dayIndex],
+        slotIndex: slot.slotIndex
+      }
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        program: {
+          code: program.code,
+          name: program.name
+        },
+        semester: parseInt(semester),
+        section: section.toUpperCase(),
+        academicYear: {
+          title: academicYear.title,
+          nepaliYear: academicYear.nepaliYear
+        },
+        routine: formattedRoutine,
+        summary: {
+          totalSlots: routineSlots.length,
+          coreClasses: coreClasses.length,
+          electiveClasses: electiveClasses.length,
+          electives: electiveSummary
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in getUnifiedSectionRoutine:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get elective conflicts for scheduling
+// @route   POST /api/routines/electives/conflicts
+// @access  Private/Admin
+exports.checkElectiveConflicts = async (req, res) => {
+  try {
+    const {
+      programId,
+      semester,
+      electiveSlots
+    } = req.body;
+
+    // Validate semester
+    if (![7, 8].includes(parseInt(semester))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Elective conflict checking only for 7th and 8th semester'
+      });
+    }
+
+    const allConflicts = [];
+
+    // Check conflicts between multiple electives
+    for (let i = 0; i < electiveSlots.length; i++) {
+      for (let j = i + 1; j < electiveSlots.length; j++) {
+        const elective1 = electiveSlots[i];
+        const elective2 = electiveSlots[j];
+
+        // Same time slot conflict
+        if (elective1.dayIndex === elective2.dayIndex && 
+            elective1.slotIndex === elective2.slotIndex) {
+          allConflicts.push({
+            type: 'ELECTIVE_TIME_CONFLICT',
+            conflictBetween: [
+              { electiveNumber: i + 1, subject: elective1.subjectName },
+              { electiveNumber: j + 1, subject: elective2.subjectName }
+            ],
+            timeSlot: `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][elective1.dayIndex]} - Slot ${elective1.slotIndex}`,
+            message: 'Two electives scheduled at same time'
+          });
+        }
+
+        // Same teacher conflict
+        if (elective1.teacherIds.some(t1 => elective2.teacherIds.includes(t1))) {
+          allConflicts.push({
+            type: 'ELECTIVE_TEACHER_CONFLICT',
+            conflictBetween: [
+              { electiveNumber: i + 1, subject: elective1.subjectName },
+              { electiveNumber: j + 1, subject: elective2.subjectName }
+            ],
+            message: 'Same teacher assigned to multiple electives'
+          });
+        }
+
+        // Same room at same time conflict
+        if (elective1.dayIndex === elective2.dayIndex && 
+            elective1.slotIndex === elective2.slotIndex &&
+            elective1.roomId === elective2.roomId) {
+          allConflicts.push({
+            type: 'ELECTIVE_ROOM_CONFLICT',
+            conflictBetween: [
+              { electiveNumber: i + 1, subject: elective1.subjectName },
+              { electiveNumber: j + 1, subject: elective2.subjectName }
+            ],
+            room: elective1.roomId,
+            message: 'Same room assigned to multiple electives at same time'
+          });
+        }
+      }
+
+      // Check if elective conflicts with core subjects
+      const coreConflicts = await RoutineSlot.find({
+        programId,
+        semester: parseInt(semester),
+        dayIndex: electiveSlots[i].dayIndex,
+        slotIndex: electiveSlots[i].slotIndex,
+        classCategory: 'CORE',
+        isActive: true
+      }).populate('subjectId', 'name');
+
+      if (coreConflicts.length > 0) {
+        allConflicts.push({
+          type: 'ELECTIVE_CORE_CONFLICT',
+          elective: { electiveNumber: i + 1, subject: electiveSlots[i].subjectName },
+          coreSubjects: coreConflicts.map(core => ({
+            subject: core.subjectId.name,
+            targetSections: core.targetSections
+          })),
+          message: 'Elective conflicts with core subject(s)'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        hasConflicts: allConflicts.length > 0,
+        conflictCount: allConflicts.length,
+        conflicts: allConflicts,
+        recommendations: generateElectiveRecommendations(allConflicts)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in checkElectiveConflicts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
+
+// Helper function to format unified routine for display
+function formatUnifiedRoutineForDisplay(routineSlots, section) {
+  const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const routine = {};
+
+  // Initialize empty days
+  weekDays.forEach(day => {
+    routine[day] = [];
+  });
+
+  // Fill in the routine slots
+  routineSlots.forEach(slot => {
+    const dayName = weekDays[slot.dayIndex];
+    
+    const routineEntry = {
+      slotIndex: slot.slotIndex,
+      subject: slot.subjectId?.name || 'Unknown Subject',
+      subjectCode: slot.subjectId?.code || 'N/A',
+      teacher: slot.teacherIds?.map(t => t.shortName).join(', ') || 'TBA',
+      room: slot.roomId?.name || 'TBA',
+      classType: slot.classType,
+      category: slot.classCategory,
+      
+      // Elective-specific display
+      ...(slot.isElectiveClass && {
+        isElective: true,
+        electiveType: slot.electiveInfo?.electiveType,
+        electiveNumber: slot.electiveInfo?.electiveNumber,
+        studentInfo: slot.electiveInfo?.studentComposition?.distributionNote || 'Mixed students',
+        displayNote: slot.electiveInfo?.displayOptions?.customDisplayText || 'Elective class',
+        highlight: slot.electiveInfo?.displayOptions?.highlightAsElective || false
+      }),
+      
+      // Core-specific display
+      ...(!slot.isElectiveClass && {
+        isElective: false,
+        studentInfo: `${section} section students`,
+        displayNote: `Core subject for ${section}`,
+        highlight: false
+      })
+    };
+    
+    routine[dayName].push(routineEntry);
+  });
+
+  // Sort each day's slots by time
+  Object.keys(routine).forEach(day => {
+    routine[day].sort((a, b) => a.slotIndex - b.slotIndex);
+  });
+
+  return routine;
+}
+
+// Helper function to generate elective recommendations
+function generateElectiveRecommendations(conflicts) {
+  const recommendations = [];
+  
+  if (conflicts.some(c => c.type === 'ELECTIVE_TIME_CONFLICT')) {
+    recommendations.push('Consider scheduling electives at different time slots to avoid student conflicts');
+  }
+  
+  if (conflicts.some(c => c.type === 'ELECTIVE_TEACHER_CONFLICT')) {
+    recommendations.push('Assign different teachers to each elective or schedule at different times');
+  }
+  
+  if (conflicts.some(c => c.type === 'ELECTIVE_ROOM_CONFLICT')) {
+    recommendations.push('Assign different rooms to electives scheduled at the same time');
+  }
+  
+  if (conflicts.some(c => c.type === 'ELECTIVE_CORE_CONFLICT')) {
+    recommendations.push('Reschedule electives to avoid conflicts with core subjects');
+  }
+  
+  if (recommendations.length === 0) {
+    recommendations.push('No conflicts detected - elective schedule looks good');
+  }
+  
+  return recommendations;
+};
+
+// @desc    Get room schedule/routine
+// @route   GET /api/rooms/:roomId/schedule
+// @access  Private
+exports.getRoomSchedule = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { academicYear } = req.query;
+
+    // Get current academic year if not provided
+    const currentAcademicYear = academicYear ? 
+      await AcademicCalendar.findById(academicYear) :
+      await AcademicCalendar.findOne({ isCurrentYear: true });
+
+    if (!currentAcademicYear) {
+      return res.status(404).json({
+        success: false,
+        message: 'No academic year found'
+      });
+    }
+
+    // Get room info
+    const room = await Room.findById(roomId);
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: 'Room not found'
+      });
+    }
+
+    // Get all routine slots for this room
+    const routineSlots = await RoutineSlot.find({
+      roomId: roomId,
+      academicYearId: currentAcademicYear._id,
+      isActive: true
+    })
+    .populate('teacherIds', 'fullName shortName')
+    .populate('subjectId', 'name code')
+    .sort({ dayIndex: 1, slotIndex: 1 });
+
+    // Build routine structure (same format as class routine)
+    const routine = {};
+    
+    // Initialize routine object for all days (0-6)
+    for (let day = 0; day <= 6; day++) {
+      routine[day] = {};
+    }
+
+    // Populate routine with classes
+    routineSlots.forEach(slot => {
+      routine[slot.dayIndex][slot.slotIndex] = {
+        _id: slot._id,
+        subjectId: slot.subjectId?._id,
+        subjectName: slot.subjectName_display || slot.subjectId?.name,
+        subjectCode: slot.subjectCode_display || slot.subjectId?.code,
+        teacherIds: slot.teacherIds?.map(t => t._id),
+        teacherNames: slot.teacherIds?.map(t => t.fullName) || [],
+        teacherShortNames: slot.teacherShortNames_display || slot.teacherIds?.map(t => t.shortName) || [],
+        roomId: slot.roomId,
+        roomName: slot.roomName_display || room.name,
+        classType: slot.classType,
+        notes: slot.notes,
+        timeSlot_display: slot.timeSlot_display,
+        // Program context
+        programCode: slot.programCode,
+        semester: slot.semester,
+        section: slot.section,
+        programSemesterSection: `${slot.programCode} Sem${slot.semester} ${slot.section}`,
+        // Additional room context
+        classCategory: slot.classCategory || 'CORE',
+        electiveInfo: slot.electiveInfo
+      };
+    });
+
+    // Calculate room utilization statistics
+    const stats = {
+      totalClasses: routineSlots.length,
+      busyDays: Object.keys(routine).filter(day => Object.keys(routine[day]).length > 0).length,
+      programs: [...new Set(routineSlots.map(slot => slot.programCode))],
+      semesters: [...new Set(routineSlots.map(slot => slot.semester))],
+      sections: [...new Set(routineSlots.map(slot => slot.section))],
+      classTypes: [...new Set(routineSlots.map(slot => slot.classType))],
+      subjects: [...new Set(routineSlots.map(slot => slot.subjectCode_display || slot.subjectId?.code))],
+      teachers: [...new Set(routineSlots.flatMap(slot => slot.teacherShortNames_display || slot.teacherIds?.map(t => t.shortName) || []))],
+      // Room utilization rate (assuming 6 working days, 7 time slots per day)
+      utilizationRate: Math.round((routineSlots.length / (6 * 7)) * 100),
+      peakDay: getPeakUtilizationDay(routine),
+      quietDay: getQuietUtilizationDay(routine)
+    };
+
+    console.log(`Room ${room.name} schedule generated with ${routineSlots.length} classes across ${stats.busyDays} days`);
+
+    res.json({
+      success: true,
+      data: {
+        room: {
+          _id: room._id,
+          name: room.name,
+          type: room.type,
+          capacity: room.capacity,
+          building: room.building,
+          floor: room.floor,
+          equipment: room.equipment
+        },
+        routine,
+        stats,
+        academicYear: {
+          _id: currentAcademicYear._id,
+          year: currentAcademicYear.year,
+          semester: currentAcademicYear.semester
+        }
+      },
+      message: `Room schedule generated successfully for ${room.name}`
+    });
+
+  } catch (error) {
+    console.error('Error in getRoomSchedule:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get vacant rooms for a specific day and time slot
+// @route   GET /api/routines/rooms/vacant
+// @access  Public
+exports.getVacantRooms = async (req, res) => {
+  try {
+    const { dayIndex, slotIndex, academicYear, roomType, building, minCapacity } = req.query;
+
+    // Validate required parameters
+    if (dayIndex === undefined || slotIndex === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'dayIndex and slotIndex are required'
+      });
+    }
+
+    // Get current academic year if not provided
+    let currentAcademicYear = academicYear ? 
+      await AcademicCalendar.findById(academicYear) :
+      await AcademicCalendar.findOne({ isCurrentYear: true });
+
+    // Build query filter for routine slots
+    const routineSlotFilter = {
+      dayIndex: parseInt(dayIndex),
+      slotIndex: parseInt(slotIndex),
+      isActive: true
+    };
+
+    // Add academic year filter only if available
+    if (currentAcademicYear) {
+      routineSlotFilter.academicYearId = currentAcademicYear._id;
+    } else {
+      console.log('⚠️  No academic year found, fetching all routine slots without year filtering');
+    }
+
+    // Build room filter criteria
+    const roomFilter = { isActive: true };
+    if (roomType) roomFilter.type = roomType;
+    if (building) roomFilter.building = building;
+    if (minCapacity) roomFilter.capacity = { $gte: parseInt(minCapacity) };
+
+    // Get all rooms matching criteria
+    const allRooms = await Room.find(roomFilter).sort({ building: 1, name: 1 });
+
+    // Get rooms that are occupied at this time slot
+    const occupiedRooms = await RoutineSlot.find(routineSlotFilter)
+    .populate('subjectId', 'name code')
+    .populate('teacherIds', 'fullName shortName')
+    .select('roomId programCode semester section subjectName_display classType');
+
+    // Create map of occupied room IDs with their details
+    const occupiedRoomMap = new Map();
+    occupiedRooms.forEach(slot => {
+      occupiedRoomMap.set(slot.roomId.toString(), {
+        programCode: slot.programCode,
+        semester: slot.semester,
+        section: slot.section,
+        subjectName: slot.subjectName_display || slot.subjectId?.name,
+        classType: slot.classType,
+        teacherIds: slot.teacherIds?.map(t => t._id),
+        teacherNames: slot.teacherIds?.map(t => t.fullName) || []
+      });
+    });
+
+    // Separate vacant and occupied rooms
+    const vacantRooms = [];
+    const occupiedRoomDetails = [];
+
+    allRooms.forEach(room => {
+      const roomIdStr = room._id.toString();
+      if (occupiedRoomMap.has(roomIdStr)) {
+        // Room is occupied
+        const occupancyDetails = occupiedRoomMap.get(roomIdStr);
+        occupiedRoomDetails.push({
+          room: {
+            _id: room._id,
+            name: room.name,
+            type: room.type,
+            capacity: room.capacity,
+            building: room.building,
+            floor: room.floor
+          },
+          occupiedBy: occupancyDetails
+        });
+      } else {
+        // Room is vacant
+        vacantRooms.push({
+          _id: room._id,
+          name: room.name,
+          type: room.type,
+          capacity: room.capacity,
+          building: room.building,
+          floor: room.floor,
+          equipment: room.equipment
+        });
+      }
+    });
+
+    // Get time slot info for display
+    const timeSlot = await TimeSlot.findOne({ slotIndex: parseInt(slotIndex) });
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    res.json({
+      success: true,
+      data: {
+        queryInfo: {
+          day: dayNames[parseInt(dayIndex)],
+          dayIndex: parseInt(dayIndex),
+          slotIndex: parseInt(slotIndex),
+          timeSlot: timeSlot ? `${timeSlot.startTime} - ${timeSlot.endTime}` : `Slot ${slotIndex}`,
+          academicYear: currentAcademicYear ? currentAcademicYear.year : 'All Years',
+          filters: {
+            roomType: roomType || 'All',
+            building: building || 'All',
+            minCapacity: minCapacity || 0
+          }
+        },
+        vacantRooms,
+        occupiedRooms: occupiedRoomDetails,
+        summary: {
+          totalRooms: allRooms.length,
+          vacantCount: vacantRooms.length,
+          occupiedCount: occupiedRoomDetails.length,
+          vacancyRate: Math.round((vacantRooms.length / allRooms.length) * 100)
+        }
+      },
+      message: `Found ${vacantRooms.length} vacant rooms out of ${allRooms.length} total rooms`
+    });
+  } catch (error) {
+    console.error('Error in getVacantRooms:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get room vacancy status for an entire day
+// @route   GET /api/routines/rooms/vacant/day
+// @access  Public
+exports.getRoomVacancyForDay = async (req, res) => {
+  try {
+    const { dayIndex, academicYear, roomType, building, minCapacity } = req.query;
+
+    // Validate required parameters
+    if (dayIndex === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'dayIndex is required'
+      });
+    }
+
+    // Get current academic year if not provided
+    let currentAcademicYear = academicYear ? 
+      await AcademicCalendar.findById(academicYear) :
+      await AcademicCalendar.findOne({ isCurrentYear: true });
+
+    // Build query filter for routine slots
+    const routineSlotFilter = {
+      dayIndex: parseInt(dayIndex),
+      isActive: true
+    };
+
+    // Add academic year filter only if available
+    if (currentAcademicYear) {
+      routineSlotFilter.academicYearId = currentAcademicYear._id;
+    } else {
+      console.log('⚠️  No academic year found, fetching all routine slots without year filtering');
+    }
+
+    // Build room filter criteria
+    const roomFilter = { isActive: true };
+    if (roomType) roomFilter.type = roomType;
+    if (building) roomFilter.building = building;
+    if (minCapacity) roomFilter.capacity = { $gte: parseInt(minCapacity) };
+
+    // Get all rooms matching criteria
+    const allRooms = await Room.find(roomFilter).sort({ building: 1, name: 1 });
+
+    // Get all time slots
+    const timeSlots = await TimeSlot.find({}).sort({ slotIndex: 1 });
+
+    // Get all routine slots for this day
+    const dayRoutineSlots = await RoutineSlot.find(routineSlotFilter)
+    .populate('subjectId', 'name code')
+    .populate('teacherIds', 'fullName shortName')
+    .select('roomId slotIndex programCode semester section subjectName_display classType');
+
+    // Build occupancy map: roomId -> { slotIndex: occupancyDetails }
+    const roomOccupancyMap = new Map();
+    
+    dayRoutineSlots.forEach(slot => {
+      const roomIdStr = slot.roomId.toString();
+      if (!roomOccupancyMap.has(roomIdStr)) {
+        roomOccupancyMap.set(roomIdStr, {});
+      }
+      
+      roomOccupancyMap.get(roomIdStr)[slot.slotIndex] = {
+        programCode: slot.programCode,
+        semester: slot.semester,
+        section: slot.section,
+        subjectName: slot.subjectName_display || slot.subjectId?.name,
+        classType: slot.classType,
+        teacherNames: slot.teacherIds?.map(t => t.fullName) || []
+      };
+    });
+
+    // Build response data
+    const roomVacancyData = allRooms.map(room => {
+      const roomIdStr = room._id.toString();
+      const roomSchedule = roomOccupancyMap.get(roomIdStr) || {};
+      
+      // Calculate vacancy stats for this room
+      const occupiedSlots = Object.keys(roomSchedule).length;
+      const totalSlots = timeSlots.length;
+      const vacantSlots = totalSlots - occupiedSlots;
+      const utilizationRate = Math.round((occupiedSlots / totalSlots) * 100);
+
+      // Build slot-by-slot vacancy status
+      const slotStatus = {};
+      timeSlots.forEach(timeSlot => {
+        const slotIndex = timeSlot._id; // TimeSlot uses _id as slotIndex
+        const isOccupied = roomSchedule.hasOwnProperty(slotIndex);
+        slotStatus[slotIndex] = {
+          timeSlot: `${timeSlot.startTime} - ${timeSlot.endTime}`,
+          isVacant: !isOccupied,
+          occupiedBy: isOccupied ? roomSchedule[slotIndex] : null
+        };
+      });
+
+      return {
+        room: {
+          _id: room._id,
+          name: room.name,
+          type: room.type,
+          capacity: room.capacity,
+          building: room.building,
+          floor: room.floor,
+          equipment: room.equipment
+        },
+        vacancyStats: {
+          totalSlots,
+          occupiedSlots,
+          vacantSlots,
+          utilizationRate,
+          isCompletelyFree: occupiedSlots === 0,
+          isCompletelyOccupied: occupiedSlots === totalSlots
+        },
+        slotStatus
+      };
+    });
+
+    // Calculate overall statistics
+    const totalRooms = allRooms.length;
+    const totalSlots = timeSlots.length;
+    const totalPossibleSlots = totalRooms * totalSlots;
+    const totalOccupiedSlots = dayRoutineSlots.length;
+    const totalVacantSlots = totalPossibleSlots - totalOccupiedSlots;
+    const overallUtilizationRate = Math.round((totalOccupiedSlots / totalPossibleSlots) * 100);
+    
+    const completelyFreeRooms = roomVacancyData.filter(r => r.vacancyStats.isCompletelyFree).length;
+    const completelyOccupiedRooms = roomVacancyData.filter(r => r.vacancyStats.isCompletelyOccupied).length;
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    res.json({
+      success: true,
+      data: {
+        queryInfo: {
+          day: dayNames[parseInt(dayIndex)],
+          dayIndex: parseInt(dayIndex),
+          academicYear: currentAcademicYear ? currentAcademicYear.year : 'All Years',
+          totalTimeSlots: totalSlots,
+          filters: {
+            roomType: roomType || 'All',
+            building: building || 'All',
+            minCapacity: minCapacity || 0
+          }
+        },
+        roomVacancyData,
+        overallStats: {
+          totalRooms,
+          totalSlots,
+          totalPossibleSlots,
+          totalOccupiedSlots,
+          totalVacantSlots,
+          overallUtilizationRate,
+          completelyFreeRooms,
+          completelyOccupiedRooms,
+          partiallyOccupiedRooms: totalRooms - completelyFreeRooms - completelyOccupiedRooms
+        },
+        timeSlots: timeSlots.map(ts => ({
+          slotIndex: ts._id, // TimeSlot uses _id as slotIndex
+          timeSlot: `${ts.startTime} - ${ts.endTime}`
+        }))
+      },
+      message: `Room vacancy analysis for ${dayNames[parseInt(dayIndex)]} completed`
+    });
+
+  } catch (error) {
+    console.error('Error in getRoomVacancyForDay:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get rooms with highest vacancy rates
+// @route   GET /api/routines/rooms/vacant/analytics
+// @access  Public
+exports.getRoomVacancyAnalytics = async (req, res) => {
+  try {
+    const { academicYear, roomType, building, minCapacity, sortBy = 'vacancy' } = req.query;
+
+    // Get current academic year if not provided
+    let currentAcademicYear = academicYear ? 
+      await AcademicCalendar.findById(academicYear) :
+      await AcademicCalendar.findOne({ isCurrentYear: true });
+
+    // Build query filter for routine slots
+    const routineSlotFilter = { isActive: true };
+
+    // Add academic year filter only if available
+    if (currentAcademicYear) {
+      routineSlotFilter.academicYearId = currentAcademicYear._id;
+    } else {
+      console.log('⚠️  No academic year found, fetching all routine slots without year filtering');
+    }
+
+    // Build room filter criteria
+    const roomFilter = { isActive: true };
+    if (roomType) roomFilter.type = roomType;
+    if (building) roomFilter.building = building;
+    if (minCapacity) roomFilter.capacity = { $gte: parseInt(minCapacity) };
+
+    // Get all rooms matching criteria
+    const allRooms = await Room.find(roomFilter);
+
+    // Get total possible slots (6 working days × number of time slots)
+    const timeSlots = await TimeSlot.find({});
+    const workingDays = 6; // Sunday to Friday
+    const totalSlotsPerWeek = workingDays * timeSlots.length;
+
+    // Get all routine slots
+    const allRoutineSlots = await RoutineSlot.find(routineSlotFilter);
+
+    // Calculate vacancy analytics for each room
+    const roomAnalytics = allRooms.map(room => {
+      const roomIdStr = room._id.toString();
+      const roomSlots = allRoutineSlots.filter(slot => slot.roomId.toString() === roomIdStr);
+      
+      const occupiedSlots = roomSlots.length;
+      const vacantSlots = totalSlotsPerWeek - occupiedSlots;
+      const utilizationRate = Math.round((occupiedSlots / totalSlotsPerWeek) * 100);
+      const vacancyRate = 100 - utilizationRate;
+
+      // Calculate day-wise distribution
+      const dayDistribution = {};
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      
+      for (let day = 0; day <= 5; day++) { // Only working days
+        const daySlots = roomSlots.filter(slot => slot.dayIndex === day);
+        dayDistribution[dayNames[day]] = {
+          occupiedSlots: daySlots.length,
+          vacantSlots: timeSlots.length - daySlots.length,
+          utilizationRate: Math.round((daySlots.length / timeSlots.length) * 100)
+        };
+      }
+
+      // Find peak and quiet days
+      const peakDay = Object.entries(dayDistribution).reduce((max, [day, data]) => 
+        data.occupiedSlots > max.occupiedSlots ? { day, ...data } : max, 
+        { day: 'Sunday', occupiedSlots: 0 });
+      
+      const quietDay = Object.entries(dayDistribution).reduce((min, [day, data]) => 
+        data.occupiedSlots < min.occupiedSlots ? { day, ...data } : min, 
+        { day: 'Sunday', occupiedSlots: Infinity });
+
+      return {
+        room: {
+          _id: room._id,
+          name: room.name,
+          type: room.type,
+          capacity: room.capacity,
+          building: room.building,
+          floor: room.floor,
+          equipment: room.equipment
+        },
+        vacancyStats: {
+          totalPossibleSlots: totalSlotsPerWeek,
+          occupiedSlots,
+          vacantSlots,
+          utilizationRate,
+          vacancyRate,
+          peakDay,
+          quietDay
+        },
+        dayDistribution
+      };
+    });
+
+    // Sort rooms based on sortBy parameter
+    let sortedRooms;
+    switch (sortBy) {
+      case 'vacancy':
+        sortedRooms = roomAnalytics.sort((a, b) => b.vacancyStats.vacancyRate - a.vacancyStats.vacancyRate);
+        break;
+      case 'utilization':
+        sortedRooms = roomAnalytics.sort((a, b) => b.vacancyStats.utilizationRate - a.vacancyStats.utilizationRate);
+        break;
+      case 'capacity':
+        sortedRooms = roomAnalytics.sort((a, b) => b.room.capacity - a.room.capacity);
+        break;
+      case 'name':
+        sortedRooms = roomAnalytics.sort((a, b) => a.room.name.localeCompare(b.room.name));
+        break;
+      default:
+        sortedRooms = roomAnalytics.sort((a, b) => b.vacancyStats.vacancyRate - a.vacancyStats.vacancyRate);
+    }
+
+    // Calculate overall statistics
+    const totalRooms = allRooms.length;
+    const totalPossibleSlots = totalRooms * totalSlotsPerWeek;
+    const totalOccupiedSlots = allRoutineSlots.length;
+    const totalVacantSlots = totalPossibleSlots - totalOccupiedSlots;
+    const overallUtilizationRate = Math.round((totalOccupiedSlots / totalPossibleSlots) * 100);
+    const overallVacancyRate = 100 - overallUtilizationRate;
+
+    // Find rooms with extreme vacancy rates
+    const mostVacantRooms = sortedRooms.slice(0, 5);
+    const mostUtilizedRooms = sortedRooms.slice(-5).reverse();
+    const completelyVacantRooms = sortedRooms.filter(r => r.vacancyStats.occupiedSlots === 0);
+    const fullyUtilizedRooms = sortedRooms.filter(r => r.vacancyStats.vacancyRate === 0);
+
+    res.json({
+      success: true,
+      data: {
+        queryInfo: {
+          academicYear: currentAcademicYear ? currentAcademicYear.year : 'All Years',
+          totalWorkingDays: workingDays,
+          totalTimeSlotsPerDay: timeSlots.length,
+          sortBy,
+          filters: {
+            roomType: roomType || 'All',
+            building: building || 'All',
+            minCapacity: minCapacity || 0
+          }
+        },
+        roomAnalytics: sortedRooms,
+        overallStats: {
+          totalRooms,
+          totalPossibleSlots,
+          totalOccupiedSlots,
+          totalVacantSlots,
+          overallUtilizationRate,
+          overallVacancyRate
+        },
+        insights: {
+          mostVacantRooms: mostVacantRooms.map(r => ({
+            name: r.room.name,
+            vacancyRate: r.vacancyStats.vacancyRate,
+            building: r.room.building,
+            type: r.room.type
+          })),
+          mostUtilizedRooms: mostUtilizedRooms.map(r => ({
+            name: r.room.name,
+            utilizationRate: r.vacancyStats.utilizationRate,
+            building: r.room.building,
+            type: r.room.type
+          })),
+          completelyVacantRooms: completelyVacantRooms.length,
+          fullyUtilizedRooms: fullyUtilizedRooms.length
+        }
+      },
+      message: `Room vacancy analytics generated for ${totalRooms} rooms`
+    });
+
+  } catch (error) {
+    console.error('Error in getRoomVacancyAnalytics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
+
+// Helper function to find peak utilization day for room
+function getPeakUtilizationDay(routine) {
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let maxClasses = 0;
+  let peakDay = 'Sunday';
+
+  Object.keys(routine).forEach(dayIndex => {
+    const classCount = Object.keys(routine[dayIndex]).length;
+    if (classCount > maxClasses) {
+      maxClasses = classCount;
+      peakDay = dayNames[dayIndex];
+    }
+  });
+
+  return { day: peakDay, classCount: maxClasses };
+}
+
+// Helper function to find quietest day for room
+function getQuietUtilizationDay(routine) {
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let minClasses = Infinity;
+  let quietDay = 'Sunday';
+
+  Object.keys(routine).forEach(dayIndex => {
+    const classCount = Object.keys(routine[dayIndex]).length;
+    if (classCount < minClasses) {
+      minClasses = classCount;
+      quietDay = dayNames[dayIndex];
+    }
+  });
+
+  return { day: quietDay, classCount: minClasses === Infinity ? 0 : minClasses };
+}

@@ -54,25 +54,72 @@ const ProgramRoutineView = ({ teacherId = null }) => {
     error: programsError 
   } = useQuery({
     queryKey: ['programs'],
-    queryFn: () => programsAPI.getPrograms().then(res => res.data),
+    queryFn: async () => {
+      try {
+        const response = await programsAPI.getPrograms();
+        console.log('Programs API response:', response);
+        // Handle both response.data and response.data.data formats
+        return response.data.data || response.data || [];
+      } catch (error) {
+        console.error('Error fetching programs:', error);
+        throw error;
+      }
+    },
     enabled: !teacherMode // Only fetch programs in program view mode
   });
 
   const programs = Array.isArray(programsData) ? programsData : [];
 
-  // Fetch semesters for selected program - Same as Routine Manager
-  const { 
-    data: semestersData, 
-    isLoading: semestersLoading 
-  } = useQuery({
-    queryKey: ['program-semesters', selectedProgram],
-    queryFn: () => selectedProgram 
-      ? programSemestersAPI.getCurriculum(selectedProgram).then(res => res.data.data)
-      : Promise.resolve([]),
-    enabled: !teacherMode && !!selectedProgram
-  });
+  // Generate semesters based on selected program - Same as Admin Routine Manager
+  const semesters = React.useMemo(() => {
+    console.log('🔍 ProgramRoutineView - Generating semesters for program:', selectedProgram);
+    console.log('🔍 Available programs:', programs);
+    console.log('🔍 Programs type:', typeof programs, 'isArray:', Array.isArray(programs));
+    
+    if (!selectedProgram) {
+      console.log('❌ No program selected');
+      return [];
+    }
+    
+    if (!programs || !Array.isArray(programs)) {
+      console.log('❌ Programs not available or not array');
+      return [];
+    }
+    
+    const program = programs.find(p => p.code === selectedProgram);
+    console.log('🔍 Found program:', program);
+    
+    if (!program) {
+      console.log('❌ Program not found for code:', selectedProgram);
+      return [];
+    }
+    
+    // Try multiple possible field names for total semesters
+    const totalSemesters = program.totalSemesters || 
+                          program.semesters || 
+                          program.maxSemesters || 
+                          program.semesterCount || 
+                          8; // Default to 8
+    
+    console.log('🔍 Total semesters for program:', totalSemesters, 'from fields:', {
+      totalSemesters: program.totalSemesters,
+      semesters: program.semesters,
+      maxSemesters: program.maxSemesters,
+      semesterCount: program.semesterCount
+    });
+    
+    // Generate array of semesters from 1 to totalSemesters
+    const semesterArray = Array.from({ length: totalSemesters }, (_, index) => ({
+      semester: index + 1,
+      semesterName: `Semester ${index + 1}`
+    }));
+    
+    console.log('✅ Generated semester array:', semesterArray);
+    return semesterArray;
+  }, [selectedProgram, programs]);
 
-  const semesters = Array.isArray(semestersData) ? semestersData : [];
+  // Debug log for semesters
+  console.log('ProgramRoutineView - Final semesters state:', semesters, '| length:', semesters.length);
 
   // Available sections - Same as Routine Manager
   const sections = ['AB', 'CD'];
@@ -407,12 +454,14 @@ const ProgramRoutineView = ({ teacherId = null }) => {
                 </div>
               </div>
             }
-            headStyle={{
-              borderBottom: '1px solid #f0f2f5',
-              padding: '20px 24px'
-            }}
-            bodyStyle={{
-              padding: '4px 8px'
+            styles={{
+              header: {
+                borderBottom: '1px solid #f0f2f5',
+                padding: '20px 24px'
+              },
+              body: {
+                padding: '4px 8px'
+              }
             }}
           >
             {routineLoading ? (
@@ -512,12 +561,14 @@ const ProgramRoutineView = ({ teacherId = null }) => {
                     style={{ width: '100%', marginBottom: '12px' }}
                     value={selectedProgram}
                     onChange={(value) => {
+                      console.log('Program selected:', value);
                       setSelectedProgram(value);
                       setSelectedSemester(null);
                       setSelectedSection(null);
                     }}
                     loading={programsLoading}
                     size="large"
+                    notFoundContent={programsLoading ? "Loading programs..." : "No programs available"}
                   >
                     {programs.map(program => (
                       <Option key={program.code} value={program.code}>
@@ -532,12 +583,13 @@ const ProgramRoutineView = ({ teacherId = null }) => {
                       style={{ width: '100%' }}
                       value={selectedSemester}
                       onChange={(value) => {
+                        console.log('Semester selected:', value);
                         setSelectedSemester(value);
                         setSelectedSection(null);
                       }}
                       disabled={!selectedProgram}
-                      loading={semestersLoading}
                       size="large"
+                      notFoundContent={!selectedProgram ? "Select a program first" : "No semesters available"}
                     >
                       {semesters.map(semester => (
                         <Option key={semester.semester} value={semester.semester}>
@@ -579,6 +631,41 @@ const ProgramRoutineView = ({ teacherId = null }) => {
             </Col>
           </Row>
         </Card>
+        
+        {/* Error Alert for Programs Loading */}
+        {programsError && (
+          <Alert
+            message="Error Loading Programs"
+            description={programsError.response?.data?.message || programsError.message || 'Failed to load programs. Please refresh the page or contact support.'}
+            type="error"
+            showIcon
+            closable
+            style={{ borderRadius: '8px' }}
+            action={
+              <Button size="small" onClick={() => window.location.reload()}>
+                Refresh Page
+              </Button>
+            }
+          />
+        )}
+        
+        {/* Debug Info - Remove in production */}
+        {process.env.NODE_ENV === 'development' && (
+          <Alert
+            message="Debug Information (Class Routine Viewer)"
+            description={
+              <div>
+                <div><strong>Programs loaded:</strong> {Array.isArray(programs) ? programs.length : 'No'}</div>
+                <div><strong>Selected program:</strong> {selectedProgram || 'None'}</div>
+                <div><strong>Available semesters:</strong> {semesters.length}</div>
+                <div><strong>Programs error:</strong> {programsError ? 'Yes' : 'No'}</div>
+                <div><strong>First program:</strong> {programs[0] ? JSON.stringify({code: programs[0].code, name: programs[0].name, totalSemesters: programs[0].totalSemesters}) : 'None'}</div>
+              </div>
+            }
+            type="info"
+            style={{ borderRadius: '8px' }}
+          />
+        )}
         
         {/* Selection Summary Card - Only visible when all selections are made */}
         {selectedProgram && selectedSemester && selectedSection && (
@@ -662,12 +749,14 @@ const ProgramRoutineView = ({ teacherId = null }) => {
                 </div>
               </div>
             }
-            headStyle={{
-              borderBottom: '1px solid #f0f2f5',
-              padding: '20px 24px'
-            }}
-            bodyStyle={{
-              padding: '4px 8px'
+            styles={{
+              header: {
+                borderBottom: '1px solid #f0f2f5',
+                padding: '20px 24px'
+              },
+              body: {
+                padding: '4px 8px'
+              }
             }}
             extra={
               <Button
