@@ -1,10 +1,17 @@
 # Smart Class Routine Management System
 
-> **✨ Clean, Optimized Codebase** - Recently cleaned and optimized for maintainability and performance
+> **✨ Latest Update**: Enhanced with elective scheduling for 7th/8th semester students and streamlined admin interface
 
-A comprehensive web application for managing university class schedules with Excel integration, conflict detection, and automated teacher schedule generation.
+A comprehensive web application for managing university class schedules with Excel integration, conflict detection, and automated teacher schedule generation. Now featuring cross-section elective management for advanced semester students.
 
 ## 🚀 Features
+
+### Advanced Elective Management (NEW)
+- **Cross-Section Elective Scheduling**: 7th and 8th semester students can take electives across sections (AB/CD)
+- **Unified Routine Display**: Electives appear in both section routines simultaneously
+- **Student Composition Tracking**: Tracks students from different sections in same elective
+- **Smart Conflict Detection**: Advanced validation prevents scheduling conflicts between core and elective subjects
+- **Flexible Elective Configuration**: Support for technical, management, and open electives
 
 ### Core Routine Management
 - **Single Source of Truth**: RoutineSlot model as the central data store
@@ -42,6 +49,7 @@ A comprehensive web application for managing university class schedules with Exc
 - **Excel-like Grid**: Intuitive spreadsheet-style routine display
 - **Real-time Updates**: Live data synchronization
 - **Professional Styling**: Clean interface with Tailwind CSS and Ant Design
+- **Streamlined Admin Interface**: Focused navigation with 10 core features (37.5% reduction from original 16)
 
 ## 🛠 Tech Stack
 
@@ -83,32 +91,58 @@ A comprehensive web application for managing university class schedules with Exc
 │   │   ├── components/      # Reusable UI components
 │   │   │   ├── RoutineGrid.jsx          # Excel-like routine display
 │   │   │   ├── TeacherRoutine.jsx       # Teacher schedule view
+│   │   │   ├── AssignClassModal.jsx     # Enhanced with elective support
+│   │   │   ├── Layout.jsx               # Streamlined navigation (10 core features)
 │   │   │   └── ...
 │   │   ├── contexts/        # Global state management
 │   │   ├── pages/          # Page components
+│   │   │   ├── admin/      # Admin management pages
+│   │   │   │   ├── ElectiveManagement.jsx       # NEW: Elective group management
+│   │   │   │   ├── ConflictDetection.jsx        # Enhanced conflict detection
+│   │   │   │   ├── ProgramRoutineManager.jsx    # Core routine management
+│   │   │   │   ├── AnalyticsDashboard.jsx       # Hidden from navigation
+│   │   │   │   ├── UserManagement.jsx           # Hidden from navigation
+│   │   │   │   ├── SessionManagement.jsx        # Hidden from navigation
+│   │   │   │   ├── TemplateManagement.jsx       # Hidden from navigation
+│   │   │   │   ├── RoomVacancyAnalysis.jsx      # Hidden from navigation
+│   │   │   │   └── ...
+│   │   │   └── ...
 │   │   ├── services/       # API integration
 │   │   └── utils/          # Utility functions
 │   └── package.json        # Frontend dependencies
 ├── backend/                 # Node.js backend API
 │   ├── config/             # Database and authentication config
 │   ├── controllers/        # Route handlers with business logic
+│   │   ├── routineController.js         # Enhanced with elective functions
+│   │   ├── electiveGroupController.js   # NEW: Elective management
+│   │   ├── sectionElectiveChoiceController.js # NEW: Section choices
+│   │   └── ...
 │   ├── models/            # Mongoose schemas
-│   │   ├── RoutineSlot.js  # Single source of truth
-│   │   ├── TeacherSchedule.js # Denormalized cache
+│   │   ├── RoutineSlot.js              # Enhanced with elective fields
+│   │   ├── ElectiveGroup.js            # NEW: Elective group model
+│   │   ├── SectionElectiveChoice.js    # NEW: Section choice tracking
+│   │   ├── TeacherSchedule.js          # Denormalized cache
 │   │   └── ...
 │   ├── routes/            # API endpoints
+│   │   ├── routine.js                  # Enhanced with elective routes
+│   │   ├── electiveGroups.js           # NEW: Elective API endpoints
+│   │   ├── sectionElectiveChoices.js   # NEW: Section choice API
+│   │   └── ...
 │   ├── services/          # External service integrations
-│   │   └── queue.service.js # RabbitMQ messaging
+│   │   ├── queue.service.js            # RabbitMQ messaging
+│   │   ├── conflictDetection.js        # Enhanced elective validation
+│   │   └── ...
 │   ├── utils/             # Utility functions
-│   │   ├── excelGeneration.js # Excel export logic
-│   │   ├── scheduleGeneration.js # Teacher schedule calc
-│   │   └── conflictDetection.js # Collision detection
+│   │   ├── excelGeneration.js          # Excel export logic
+│   │   ├── scheduleGeneration.js       # Teacher schedule calc
+│   │   └── conflictDetection.js        # Enhanced collision detection
 │   ├── scripts/           # Database management scripts
 │   ├── worker.js          # Background worker process
 │   └── server.js          # Server entry point
 ├── md/                     # Architecture documentation
-│   ├── architecture.md     # System architecture spec
-│   ├── database_design.md  # Database schema design
+│   ├── architecture.md                 # System architecture spec
+│   ├── database_design.md              # Database schema design
+│   ├── ELECTIVE_MANAGEMENT_SYSTEM_COMPLETE.md # NEW: Elective implementation report
 │   └── ...
 └── README.md              # Project documentation
 ```
@@ -241,11 +275,22 @@ NODE_ENV=development
 - `GET /api/health` - API health status
 - `GET /api/health/queue` - RabbitMQ health status
 
-#### Routine Management
-- `GET /api/routines/:program/:semester/:section` - Get class routine
+#### Enhanced Routine Management
+- `GET /api/routines/:program/:semester/:section` - Get class routine with electives
 - `POST /api/routines/assign` - Assign class to slot (Admin only)
+- `POST /api/routines/electives/schedule` - **NEW**: Schedule cross-section electives (Admin only)
+- `POST /api/routines/electives/conflicts` - **NEW**: Check elective-specific conflicts (Admin only)
 - `DELETE /api/routines/clear` - Clear slot assignment (Admin only)
 - `GET /api/routines/teacher/:teacherId` - Get teacher schedule
+
+#### Elective Management (NEW)
+- `GET /api/elective-groups` - Get all elective groups
+- `POST /api/elective-groups` - Create elective group (Admin only)
+- `PUT /api/elective-groups/:id` - Update elective group (Admin only)
+- `DELETE /api/elective-groups/:id` - Delete elective group (Admin only)
+- `GET /api/section-elective-choices` - Get section elective choices
+- `POST /api/section-elective-choices` - Create section choice (Admin only)
+- `PUT /api/section-elective-choices/:id` - Update section choice (Admin only)
 
 #### Excel Operations
 - `GET /api/routines/export/class/:program/:semester/:section` - Export class routine to Excel
@@ -288,9 +333,15 @@ NODE_ENV=development
 ### Architecture Features
 
 #### Single Source of Truth
-- **RoutineSlot**: Central model for all routine data
+- **RoutineSlot**: Central model for all routine data with enhanced elective support
 - **Denormalized Cache**: TeacherSchedule for optimized queries
 - **Async Updates**: Worker service regenerates teacher schedules
+
+#### Enhanced Elective System
+1. **Cross-Section Scheduling**: Electives appear in both AB and CD section routines
+2. **Student Composition Tracking**: Records students from each section per elective
+3. **Advanced Conflict Detection**: Prevents core vs elective and elective overlap conflicts
+4. **Unified Display**: Seamless integration with existing routine views
 
 #### Professional Excel Workflow
 1. **Template Download**: Get properly formatted Excel template
@@ -382,11 +433,21 @@ For detailed information, see [TEACHER_SCHEDULE_SYSTEM.md](./TEACHER_SCHEDULE_SY
 
 ## 🔧 Key Features Explained
 
+### Advanced Elective Scheduling (NEW)
+The system now supports complex elective management for 7th and 8th semester students:
+- **Cross-Section Enrollment**: Students from sections A & B can enroll in same elective class
+- **Unified Routine Display**: Same elective appears in both section routines at identical time slots
+- **Student Composition**: Tracks exact number of students from each section (e.g., 30 from AB, 30 from CD)
+- **Smart Validation**: Prevents scheduling conflicts between core subjects and electives
+- **Multiple Electives**: 8th semester supports multiple electives (Elective I, Elective II)
+
 ### Smart Collision Detection
-The system prevents scheduling conflicts by checking:
+Enhanced conflict detection now includes:
 - Teacher availability (same teacher, same time slot)
 - Room availability (same room, same time slot)
 - Slot conflicts (same program/semester/section, same time)
+- **NEW**: Core vs Elective conflicts (prevents electives from conflicting with core subjects)
+- **NEW**: Elective overlap prevention (multiple electives at same time)
 - Cross-validation during bulk imports
 
 ### Excel Import/Export
@@ -401,15 +462,23 @@ The system prevents scheduling conflicts by checking:
 - **Health Monitoring**: Queue and API status endpoints
 
 ### Role-Based Access
-- **Admin**: Full CRUD access to all entities and bulk operations
+- **Admin**: Full CRUD access to all entities, bulk operations, and elective management
 - **Teacher**: View access to schedules and profiles
 - **Public**: Read-only access to basic routine information
 
 ### Database Architecture
-- **Single Source of Truth**: RoutineSlot as central data store
+- **Single Source of Truth**: RoutineSlot as central data store with elective extensions
 - **Denormalized Caching**: TeacherSchedule for read optimization
 - **Compound Indexes**: Optimized queries for common operations
 - **Data Integrity**: Comprehensive validation and referential integrity
+- **Elective Support**: Enhanced schema for cross-section elective tracking
+
+### Admin Interface Optimization
+The admin interface has been streamlined for better usability:
+- **Focused Navigation**: Reduced from 16 to 10 core features (37.5% reduction)
+- **Hidden Advanced Features**: Analytics, user management, templates, session management, room vacancy analysis, and department management are preserved but hidden from main navigation
+- **Quick Access**: Core daily-use features prominently displayed
+- **Preserved Functionality**: All backend APIs remain active for hidden features
 
 ## 📚 Documentation
 
@@ -418,6 +487,10 @@ The system prevents scheduling conflicts by checking:
 - [Architecture Overview](md/architecture.md) - System design and data flow
 - [Database Design](md/database_design.md) - Schema and relationships
 - [Routine Management](md/routine.md) - Routine management documentation
+
+### New Feature Documentation
+- [Elective Management System](md/ELECTIVE_MANAGEMENT_SYSTEM_COMPLETE.md) - **NEW**: Complete implementation report for cross-section elective scheduling
+- [Advanced Conflict Detection](md/ADVANCED_CONFLICT_DETECTION_COMPLETE.md) - Enhanced conflict detection documentation
 
 ### Implementation Reports
 - [Feature Completion Reports](md/) - Detailed implementation and validation reports
@@ -444,10 +517,31 @@ node scripts/seedFaculty.js     # Seed with sample data
 
 # VS Code tasks (recommended)
 # Use Ctrl+Shift+P → "Tasks: Run Task"
-# - Start Backend
-# - Start Frontend
-# - Restart Project
+# - Start Backend          # Installs dependencies and starts server on port 7102
+# - Start Frontend         # Installs dependencies and starts dev server on port 7101
+# - Restart Project        # Restarts both backend and frontend
 ```
+
+## 🆕 Recent Updates & Changes
+
+### Elective Management System (Latest)
+- ✅ **Cross-Section Elective Scheduling**: 7th and 8th semester electives work across AB/CD sections
+- ✅ **Enhanced Backend API**: New endpoints for elective scheduling and conflict detection
+- ✅ **Frontend Integration**: AssignClassModal enhanced with elective configuration options
+- ✅ **Advanced Conflict Detection**: Prevents core vs elective and elective overlap conflicts
+- ✅ **Unified Routine Display**: Electives appear in both section routines simultaneously
+
+### Admin Interface Streamlining
+- ✅ **Navigation Optimization**: Reduced admin navigation from 16 to 10 core features
+- ✅ **Hidden Advanced Features**: Analytics, user management, templates, session management, room vacancy analysis, and department management moved to background
+- ✅ **Preserved Functionality**: All backend APIs remain active for advanced features
+- ✅ **Improved User Experience**: Focus on daily-use routine management features
+
+### Current Status
+- **Backend Server**: Running on port 7102 with full elective support
+- **Frontend Application**: Running on port 7101 with streamlined interface
+- **Database**: Enhanced with elective-specific models and fields
+- **Documentation**: Complete implementation reports available in `/md` folder
 
 ## 🤝 Contributing
 
@@ -468,10 +562,41 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - MongoDB team for the flexible database
 - All open-source contributors who made this project possible
 
-## 📞 Support
+## 📞 Support & Information
 
-For support, email your-email@example.com or create an issue in the repository.
+### System Information
+- **Current Version**: Enhanced with Elective Management System
+- **Backend Port**: 7102
+- **Frontend Port**: 7101
+- **Database**: MongoDB with enhanced elective support
+- **Queue System**: RabbitMQ for background processing
+
+### Admin Navigation Features
+**Visible Core Features (10):**
+1. Dashboard
+2. Class Routine 
+3. Teacher Schedule
+4. Routine Manager
+5. Teachers Management
+6. Programs Management
+7. Subjects Management
+8. Rooms Management
+9. Time Slots Management
+10. Academic Calendar
+11. Elective Management
+12. Conflict Detection
+13. Lab Groups
+
+**Hidden Advanced Features (6):**
+- Analytics Dashboard (accessible via direct URL: `/analytics-dashboard`)
+- User Management (accessible via direct URL: `/user-manager`)
+- Session Management (accessible via direct URL: `/session-manager`)
+- Template Management (accessible via direct URL: `/template-manager`)
+- Room Vacancy Analysis (accessible via direct URL: `/room-vacancy-analysis`)
+- Department Management (accessible via direct URL: `/departments-manager`)
+
+For support, create an issue in the repository or contact the development team.
 
 ---
 
-**Happy Coding!** 🎉
+**Latest Update**: December 2024 - Enhanced with comprehensive elective management system for 7th and 8th semester students, featuring cross-section scheduling and streamlined admin interface. 🎉
